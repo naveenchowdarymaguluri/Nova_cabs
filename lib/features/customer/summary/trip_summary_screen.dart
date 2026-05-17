@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
+import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
+import '../../../core/firestore_service.dart';
 import '../booking/payment_screen.dart';
 import '../rating/rating_screen.dart';
 
-class TripSummaryScreen extends StatefulWidget {
+class TripSummaryScreen extends ConsumerStatefulWidget {
   final TripRequest trip;
   final DriverModel driver;
 
@@ -15,10 +18,10 @@ class TripSummaryScreen extends StatefulWidget {
   });
 
   @override
-  State<TripSummaryScreen> createState() => _TripSummaryScreenState();
+  ConsumerState<TripSummaryScreen> createState() => _TripSummaryScreenState();
 }
 
-class _TripSummaryScreenState extends State<TripSummaryScreen> {
+class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   bool _isFinalPaid = false;
 
   @override
@@ -197,7 +200,15 @@ class _TripSummaryScreenState extends State<TripSummaryScreen> {
                     ),
                   ),
                 );
-                if (result == true) setState(() => _isFinalPaid = true);
+                if (result == true) {
+                  setState(() => _isFinalPaid = true);
+                  
+                  // Update payment status in Firestore
+                  final updatedTrip = widget.trip.copyWith(
+                    paymentStatus: PaymentStatus.success, // Changed to success
+                  );
+                  await ref.read(firestoreServiceProvider).updateTrip(updatedTrip);
+                }
               } else {
                 Navigator.pushReplacement(
                   context,

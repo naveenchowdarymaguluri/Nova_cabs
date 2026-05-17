@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
-import '../../../core/models.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
 import '../search/cab_listing_screen.dart';
@@ -729,6 +727,8 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
   }
 
   Widget _buildOffersSection() {
+    final offersAsync = ref.watch(firestoreOffersProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -744,13 +744,22 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
         ),
         SizedBox(
           height: 180,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: MockData.offers.length,
-            itemBuilder: (context, index) {
-              return OfferCard(offer: MockData.offers[index]);
+          child: offersAsync.when(
+            data: (offers) {
+              if (offers.isEmpty) {
+                return const Center(child: Text('No offers available right now'));
+              }
+              return ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: offers.length,
+                itemBuilder: (context, index) {
+                  return OfferCard(offer: offers[index]);
+                },
+              );
             },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, s) => Center(child: Text('Error: $e')),
           ),
         ),
       ],

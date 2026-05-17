@@ -5,6 +5,7 @@ import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/mock_data.dart';
+import '../../../core/models.dart';
 import '../../role_selection/role_selection_screen.dart';
 import '../pricing/driver_pricing_screen.dart';
 import '../trips/driver_trip_history_screen.dart';
@@ -34,14 +35,6 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-
-    // Simulate incoming trip request after 5 seconds if online
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && ref.read(driverOnlineStatusProvider)) {
-        setState(() => _hasTripRequest = true);
-        _showTripRequestBottomSheet();
-      }
-    });
   }
 
   @override
@@ -54,6 +47,27 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
   Widget build(BuildContext context) {
     final isOnline = ref.watch(driverOnlineStatusProvider);
     final driver = widget.driver;
+
+    ref.listen<AsyncValue<List<TripRequest>>>(
+      firestoreDriverTripsProvider(driver.id),
+      (previous, next) {
+        if (!isOnline) return;
+
+        next.whenData((trips) {
+          // Find any trip that is 'booked' (pending acceptance)
+          final newTrip = trips.where((t) => t.status == BookingStatus.booked).firstOrNull;
+          
+          if (newTrip != null && !_hasTripRequest) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _hasTripRequest = true);
+                _showTripRequestBottomSheet(newTrip);
+              }
+            });
+          }
+        });
+      },
+    );
 
     final pages = [
       _buildHomePage(isOnline, driver),
@@ -389,33 +403,38 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
   }
 
   Widget _buildTodayStats(DriverModel driver) {
-    final allBookings = ref.watch(bookingProvider);
+    final tripsAsyncValue = ref.watch(firestoreDriverTripsProvider(driver.id));
     final today = DateFormat('dd MMM yyyy').format(DateTime.now());
     
-    final todayCompleted = allBookings.where((b) => 
-      b.driverId == driver.id && 
-      b.status == 'Completed' && 
-      b.date == today
-    ).toList();
+    return tripsAsyncValue.when(
+      data: (trips) {
+        final todayCompleted = trips.where((b) {
+          final tripDateStr = DateFormat('dd MMM yyyy').format(b.tripDate);
+          return b.status == BookingStatus.tripCompleted && tripDateStr == today;
+        }).toList();
 
-    final earningsToday = todayCompleted.fold(0.0, (sum, b) => sum + (b.totalFare * 0.85));
-    final distanceToday = todayCompleted.fold(0.0, (sum, b) => sum + b.totalDistance);
+        final earningsToday = todayCompleted.fold(0.0, (sum, b) => sum + ((b.finalFare ?? b.estimatedFare) * 0.85));
+        final distanceToday = todayCompleted.fold(0.0, (sum, b) => sum + (b.actualDistance ?? b.estimatedDistance));
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Today's Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildStatCard('₹${earningsToday.toStringAsFixed(0)}', 'Today\'s Earnings', Icons.account_balance_wallet, Colors.green)),
-            const SizedBox(width: 12),
-            Expanded(child: _buildStatCard('${todayCompleted.length}', 'Trips Today', Icons.local_taxi, Colors.blue)),
-            const SizedBox(width: 12),
-            Expanded(child: _buildStatCard('${distanceToday.toStringAsFixed(0)} km', 'Distance', Icons.route, Colors.orange)),
+            const Text("Today's Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _buildStatCard('₹${earningsToday.toStringAsFixed(0)}', 'Today\'s Earnings', Icons.account_balance_wallet, Colors.green)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildStatCard('${todayCompleted.length}', 'Trips Today', Icons.local_taxi, Colors.blue)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildStatCard('${distanceToday.toStringAsFixed(0)} km', 'Distance', Icons.route, Colors.orange)),
+              ],
+            ),
           ],
-        ),
-      ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => Center(child: Text('Error loading stats: $e')),
     );
   }
 
@@ -727,10 +746,9 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
     );
   }
 
-  void _showTripRequestBottomSheet() {
-    final booking = MockData.bookings.first;
-    final fareController = TextEditingController(text: booking.totalFare.toStringAsFixed(0));
-    final distanceController = TextEditingController(text: booking.totalDistance.toStringAsFixed(0));
+  void _showTripRequestBottomSheet(TripRequest trip) {
+    final fareController = TextEditingController(text: trip.estimatedFare.toStringAsFixed(0));
+    final distanceController = TextEditingController(text: trip.estimatedDistance.toStringAsFixed(0));
 
     showModalBottomSheet(
       context: context,
@@ -806,15 +824,15 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
               ),
               child: Column(
                 children: [
-                  _buildTripDetailRow(Icons.person, 'Customer', booking.customerName),
+                  _buildTripDetailRow(Icons.person, 'Customer', trip.customerName),
                   const Divider(height: 20),
-                  _buildTripDetailRow(Icons.location_on, 'Pickup', booking.pickupLocation),
+                  _buildTripDetailRow(Icons.location_on, 'Pickup', trip.pickupLocation),
                   const Divider(height: 20),
-                  _buildTripDetailRow(Icons.flag, 'Drop', booking.dropLocation),
+                  _buildTripDetailRow(Icons.flag, 'Drop', trip.dropLocation),
                   const Divider(height: 20),
-                  _buildTripDetailRow(Icons.route, 'Est. Distance', '${booking.totalDistance.toStringAsFixed(0)} km'),
+                  _buildTripDetailRow(Icons.route, 'Est. Distance', '${trip.estimatedDistance.toStringAsFixed(0)} km'),
                   const Divider(height: 20),
-                  _buildTripDetailRow(Icons.currency_rupee, 'Est. Fare', '₹${booking.totalFare.toStringAsFixed(0)}'),
+                  _buildTripDetailRow(Icons.currency_rupee, 'Est. Fare', '₹${trip.estimatedFare.toStringAsFixed(0)}'),
                 ],
               ),
             ),
@@ -843,16 +861,12 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.pop(context);
                       setState(() => _hasTripRequest = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Trip request declined'),
-                          backgroundColor: Colors.red,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      
+                      // Reject updates status to cancelled or similar.
+                      // Leaving this logic simple for now.
                     },
                     icon: const Icon(Icons.close, color: Colors.red),
                     label: const Text('Decline', style: TextStyle(color: Colors.red)),
@@ -866,20 +880,41 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.pop(context);
                       setState(() => _hasTripRequest = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('🎉 Trip accepted! Navigation to active trip.'),
-                          backgroundColor: Colors.green,
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                      
+                      final updatedTrip = TripRequest(
+                        id: trip.id,
+                        bookingId: trip.bookingId,
+                        customerId: trip.customerId,
+                        customerName: trip.customerName,
+                        customerPhone: trip.customerPhone,
+                        pickupLocation: trip.pickupLocation,
+                        dropLocation: trip.dropLocation,
+                        estimatedDistance: trip.estimatedDistance,
+                        estimatedFare: trip.estimatedFare,
+                        cabType: trip.cabType,
+                        tripDate: trip.tripDate,
+                        tripTime: trip.tripTime,
+                        status: BookingStatus.driverAccepted,
+                        driverId: trip.driverId,
+                        advancePaid: trip.advancePaid,
+                        actualDistance: trip.actualDistance,
+                        finalFare: trip.finalFare,
+                        paymentStatus: trip.paymentStatus,
+                        createdAt: trip.createdAt,
+                        rentalPackage: trip.rentalPackage,
                       );
+                      
+                      await ref.read(firestoreServiceProvider).updateTrip(updatedTrip);
+                      
+                      if (!mounted) return;
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => DriverActiveTripScreen(booking: booking),
+                          builder: (_) => DriverActiveTripScreen(trip: updatedTrip),
                         ),
                       );
                     },

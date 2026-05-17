@@ -7,6 +7,7 @@ import '../../../core/extended_models.dart';
 import '../../shared/otp_screen.dart';
 import '../dashboard/agency_dashboard.dart';
 import '../registration/agency_registration_screen.dart';
+import '../../driver/auth/driver_login_screen.dart';
 
 /// Agency Login Screen — Mobile OTP based
 class AgencyLoginScreen extends ConsumerStatefulWidget {
@@ -129,14 +130,45 @@ class _AgencyLoginScreenState extends ConsumerState<AgencyLoginScreen> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.orange.shade100),
                       ),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'New agency? Registering is simple. Enter your number and follow the steps.',
-                              style: TextStyle(color: Colors.orange.shade800, fontSize: 13, height: 1.4),
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'New agency? Registering is simple. Enter your number and follow the steps.',
+                                  style: TextStyle(color: Colors.orange.shade800, fontSize: 13, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Divider(),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => DriverLoginScreen(),
+                                ),
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Icon(Icons.drive_eta, color: Colors.blue.shade700, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Individual Driver? Click here for Driver Login',
+                                    style: TextStyle(color: Colors.blue.shade800, fontSize: 13, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, color: Colors.blue.shade300, size: 20),
+                              ],
                             ),
                           ),
                         ],

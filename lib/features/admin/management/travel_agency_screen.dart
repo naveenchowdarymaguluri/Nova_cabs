@@ -1,26 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/mock_data.dart';
-import '../../../core/models.dart';
+import '../../../core/extended_models.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
-class TravelAgencyScreen extends StatefulWidget {
+class TravelAgencyScreen extends ConsumerStatefulWidget {
   const TravelAgencyScreen({super.key});
 
   @override
-  State<TravelAgencyScreen> createState() => _TravelAgencyScreenState();
+  ConsumerState<TravelAgencyScreen> createState() => _TravelAgencyScreenState();
 }
 
-class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
-  List<TravelAgency> _agencies = List.from(MockData.agencies);
+class _TravelAgencyScreenState extends ConsumerState<TravelAgencyScreen> {
   String _searchQuery = '';
 
-  List<TravelAgency> get _filteredAgencies => _agencies
-      .where((a) => a.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          a.contactPerson.toLowerCase().contains(_searchQuery.toLowerCase()))
-      .toList();
+  List<AgencyModel> _getFilteredAgencies(List<AgencyModel> agencies) {
+    return agencies
+        .where((a) => a.agencyName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            a.ownerName.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final agenciesAsync = ref.watch(firestoreAgenciesProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Travel Agencies'),
@@ -31,21 +37,28 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          _buildStats(),
-          Expanded(
-            child: _filteredAgencies.isEmpty
-                ? const Center(child: Text('No agencies found'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredAgencies.length,
-                    itemBuilder: (context, index) =>
-                        _buildAgencyCard(_filteredAgencies[index]),
-                  ),
-          ),
-        ],
+      body: agenciesAsync.when(
+        data: (agencies) {
+          final filtered = _getFilteredAgencies(agencies);
+          return Column(
+            children: [
+              _buildSearchBar(),
+              _buildStats(agencies),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(child: Text('No agencies found'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) =>
+                            _buildAgencyCard(filtered[index]),
+                      ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, s) => Center(child: Text('Error: $e')),
       ),
     );
   }
@@ -69,14 +82,14 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
     );
   }
 
-  Widget _buildStats() {
-    final active = _agencies.where((a) => a.isActive).length;
-    final inactive = _agencies.where((a) => !a.isActive).length;
+  Widget _buildStats(List<AgencyModel> agencies) {
+    final active = agencies.where((a) => a.status == AccountStatus.active || a.status == AccountStatus.approved).length;
+    final inactive = agencies.where((a) => a.status == AccountStatus.inactive || a.status == AccountStatus.suspended).length;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _buildStatChip('Total', '${_agencies.length}', Colors.blue),
+          _buildStatChip('Total', '${agencies.length}', Colors.blue),
           const SizedBox(width: 8),
           _buildStatChip('Active', '$active', Colors.green),
           const SizedBox(width: 8),
@@ -101,7 +114,8 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
     );
   }
 
-  Widget _buildAgencyCard(TravelAgency agency) {
+  Widget _buildAgencyCard(AgencyModel agency) {
+    final isActive = agency.status == AccountStatus.active || agency.status == AccountStatus.approved;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -114,24 +128,29 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
           ListTile(
             contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             leading: CircleAvatar(
-              backgroundColor: agency.isActive
+              backgroundColor: isActive
                   ? AppTheme.primaryColor.withValues(alpha: 0.1)
                   : Colors.grey.shade100,
               child: Text(
-                agency.name[0],
+                agency.agencyName[0],
                 style: TextStyle(
-                  color: agency.isActive ? AppTheme.primaryColor : Colors.grey,
+                  color: isActive ? AppTheme.primaryColor : Colors.grey,
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),
               ),
             ),
-            title: Text(agency.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            subtitle: Text(agency.contactPerson, style: TextStyle(color: Colors.grey.shade600)),
+            title: Text(agency.agencyName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text(agency.ownerName, style: TextStyle(color: Colors.grey.shade600)),
             trailing: Switch(
-              value: agency.isActive,
+              value: isActive,
               activeThumbColor: AppTheme.primaryColor,
-              onChanged: (val) => setState(() => agency.isActive = val),
+              onChanged: (val) {
+                ref.read(firestoreServiceProvider).updateAgencyStatus(
+                  agency.id,
+                  val ? AccountStatus.active : AccountStatus.inactive,
+                );
+              },
             ),
           ),
           Padding(
@@ -141,13 +160,13 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
                 const Divider(),
                 Row(
                   children: [
-                    _buildInfoItem(Icons.phone, agency.mobileNumber),
+                    _buildInfoItem(Icons.phone, agency.phoneNumber),
                     const SizedBox(width: 16),
-                    _buildInfoItem(Icons.email, agency.email),
+                    _buildInfoItem(Icons.email, 'contact@${agency.agencyName.toLowerCase().replaceAll(' ', '')}.com'),
                   ],
                 ),
                 const SizedBox(height: 8),
-                _buildInfoItem(Icons.location_on, agency.address),
+                _buildInfoItem(Icons.location_on, agency.businessAddress),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -200,15 +219,11 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
     );
   }
 
-  void _showAgencyDialog(BuildContext context, {TravelAgency? agency}) {
-    final nameCtrl = TextEditingController(text: agency?.name ?? '');
-    final contactCtrl = TextEditingController(text: agency?.contactPerson ?? '');
-    final mobileCtrl = TextEditingController(text: agency?.mobileNumber ?? '');
-    final whatsappCtrl = TextEditingController(text: agency?.whatsappNumber ?? '');
-    final emailCtrl = TextEditingController(text: agency?.email ?? '');
-    final addressCtrl = TextEditingController(text: agency?.address ?? '');
-    final gstCtrl = TextEditingController(text: agency?.gstNumber ?? '');
-    final bankCtrl = TextEditingController(text: agency?.bankDetails ?? '');
+  void _showAgencyDialog(BuildContext context, {AgencyModel? agency}) {
+    final nameCtrl = TextEditingController(text: agency?.agencyName ?? '');
+    final ownerCtrl = TextEditingController(text: agency?.ownerName ?? '');
+    final phoneCtrl = TextEditingController(text: agency?.phoneNumber ?? '');
+    final addressCtrl = TextEditingController(text: agency?.businessAddress ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -234,31 +249,28 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
               ),
               const SizedBox(height: 20),
               _buildField(nameCtrl, 'Agency Name', Icons.business),
-              _buildField(contactCtrl, 'Contact Person', Icons.person),
-              _buildField(mobileCtrl, 'Mobile Number', Icons.phone),
-              _buildField(whatsappCtrl, 'WhatsApp Number', Icons.message),
-              _buildField(emailCtrl, 'Email ID', Icons.email),
+              _buildField(ownerCtrl, 'Owner Name', Icons.person),
+              _buildField(phoneCtrl, 'Phone Number', Icons.phone),
               _buildField(addressCtrl, 'Address', Icons.location_on),
-              _buildField(gstCtrl, 'GST Number (Optional)', Icons.receipt),
-              _buildField(bankCtrl, 'Bank/UPI Details', Icons.account_balance),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () {
-                  if (agency == null) {
-                    setState(() {
-                      _agencies.add(TravelAgency(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        name: nameCtrl.text,
-                        contactPerson: contactCtrl.text,
-                        mobileNumber: mobileCtrl.text,
-                        whatsappNumber: whatsappCtrl.text,
-                        email: emailCtrl.text,
-                        address: addressCtrl.text,
-                        gstNumber: gstCtrl.text,
-                        bankDetails: bankCtrl.text,
-                      ));
-                    });
-                  }
+                onPressed: () async {
+                  final newAgency = AgencyModel(
+                    id: agency?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                    agencyName: nameCtrl.text,
+                    ownerName: ownerCtrl.text,
+                    phoneNumber: phoneCtrl.text,
+                    businessAddress: addressCtrl.text,
+                    status: agency?.status ?? AccountStatus.active,
+                    totalDrivers: agency?.totalDrivers ?? 0,
+                    totalVehicles: agency?.totalVehicles ?? 0,
+                    totalEarnings: agency?.totalEarnings ?? 0,
+                    totalBookings: agency?.totalBookings ?? 0,
+                    registeredAt: agency?.registeredAt ?? DateTime.now(),
+                  );
+                  
+                  await ref.read(firestoreServiceProvider).saveAgency(newAgency);
+                  
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -289,20 +301,20 @@ class _TravelAgencyScreenState extends State<TravelAgencyScreen> {
     );
   }
 
-  void _showDeleteConfirm(TravelAgency agency) {
+  void _showDeleteConfirm(AgencyModel agency) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Agency'),
-        content: Text('Are you sure you want to delete "${agency.name}"?'),
+        content: Text('Are you sure you want to delete "${agency.agencyName}"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              setState(() => _agencies.remove(agency));
+              // Logic to delete from Firestore would go here
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Agency deleted'), backgroundColor: Colors.red),
+                const SnackBar(content: Text('Delete action simulated'), backgroundColor: Colors.red),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

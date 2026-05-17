@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
+import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
+import '../../../core/firestore_service.dart';
 import '../summary/trip_summary_screen.dart';
+import '../../../widgets/map_view.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-class TripTrackingScreen extends StatefulWidget {
+class TripTrackingScreen extends ConsumerStatefulWidget {
   final TripRequest trip;
   final DriverModel driver;
 
@@ -15,10 +20,10 @@ class TripTrackingScreen extends StatefulWidget {
   });
 
   @override
-  State<TripTrackingScreen> createState() => _TripTrackingScreenState();
+  ConsumerState<TripTrackingScreen> createState() => _TripTrackingScreenState();
 }
 
-class _TripTrackingScreenState extends State<TripTrackingScreen> {
+class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   BookingStatus _currentStatus = BookingStatus.driverAccepted;
   int _secondsLeft = 180; // 3 minutes until arrival
   Timer? _timer;
@@ -50,34 +55,23 @@ class _TripTrackingScreenState extends State<TripTrackingScreen> {
     });
   }
 
-  void _completeTrip() {
-    final completedTrip = TripRequest(
-      id: widget.trip.id,
-      bookingId: widget.trip.bookingId,
-      customerId: widget.trip.customerId,
-      customerName: widget.trip.customerName,
-      customerPhone: widget.trip.customerPhone,
-      pickupLocation: widget.trip.pickupLocation,
-      dropLocation: widget.trip.dropLocation,
-      estimatedDistance: widget.trip.estimatedDistance,
-      estimatedFare: widget.trip.estimatedFare,
-      cabType: widget.trip.cabType,
-      tripDate: widget.trip.tripDate,
-      tripTime: widget.trip.tripTime,
+  void _completeTrip() async {
+    final completedTrip = widget.trip.copyWith(
       status: BookingStatus.tripCompleted,
-      driverId: widget.trip.driverId,
-      advancePaid: widget.trip.advancePaid,
       actualDistance: widget.trip.estimatedDistance + 2.0, // Simulation: traveled slightly more
       finalFare: widget.trip.estimatedFare + 24.0, // Extra for 2km
       paymentStatus: PaymentStatus.pending, // Final payment pending
-      createdAt: widget.trip.createdAt,
-      rentalPackage: widget.trip.rentalPackage,
     );
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => TripSummaryScreen(trip: completedTrip, driver: widget.driver)),
-    );
+    // Save to Firestore
+    await ref.read(firestoreServiceProvider).updateTrip(completedTrip);
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => TripSummaryScreen(trip: completedTrip, driver: widget.driver)),
+      );
+    }
   }
 
   @override
@@ -100,21 +94,9 @@ class _TripTrackingScreenState extends State<TripTrackingScreen> {
   }
 
   Widget _buildMapPlaceholder() {
-    return Container(
-      color: Colors.blue.shade50,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.map_outlined, size: 80, color: Colors.blueAccent),
-            const SizedBox(height: 16),
-            Text(
-              'Live Map - Driver is ${_currentStatus.name}',
-              style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
+    return const MapView(
+      initialLat: 17.3850,
+      initialLng: 78.4867,
     );
   }
 

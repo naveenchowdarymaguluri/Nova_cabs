@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "690772977631",
+    "project_id": "nova-cabs-544fc",
+    "storage_bucket": "nova-cabs-544fc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:690772977631:android:ddb59fad796fe9c04b066a",
+        "android_client_info": {
+          "package_name": "com.nova_nest.nova_cabs"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSVyyvVwGcSDzNnuDRK9h5YR5U7Hz2lVw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

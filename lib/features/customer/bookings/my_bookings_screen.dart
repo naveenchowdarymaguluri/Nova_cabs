@@ -14,41 +14,12 @@ class MyBookingsScreen extends ConsumerStatefulWidget {
 class _MyBookingsScreenState extends ConsumerState<MyBookingsScreen> {
   String _filter = 'All';
 
-  final List<Map<String, dynamic>> _mockBookings = [
-    {
-      'id': 'BK1002',
-      'date': DateTime.now().subtract(const Duration(days: 1)),
-      'pickup': 'Indiranagar, Bangalore',
-      'drop': 'Kempegowda Int. Airport',
-      'fare': 1250.0,
-      'driver': 'Ramesh Kumar',
-      'status': 'Completed',
-    },
-    {
-      'id': 'BK1005',
-      'date': DateTime.now().subtract(const Duration(days: 3)),
-      'pickup': 'Koramangala 5th Block',
-      'drop': 'MG Road Metro Station',
-      'fare': 350.0,
-      'driver': 'Suresh Patel',
-      'status': 'Cancelled',
-    },
-    {
-      'id': 'BK1008',
-      'date': DateTime.now().add(const Duration(days: 2)),
-      'pickup': 'Whitefield, ITPL',
-      'drop': 'Electronic City Phase 1',
-      'fare': 850.0,
-      'driver': 'Priya Devi',
-      'status': 'Upcoming',
-    },
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final filtered = _filter == 'All' 
-        ? _mockBookings 
-        : _mockBookings.where((b) => b['status'] == _filter).toList();
+    final authState = ref.watch(authProvider);
+    final customerId = authState.userId ?? '';
+
+    final bookingsAsync = ref.watch(firestoreCustomerBookingsProvider(customerId));
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -59,15 +30,31 @@ class _MyBookingsScreenState extends ConsumerState<MyBookingsScreen> {
           child: _buildFilterBar(),
         ),
       ),
-      body: filtered.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: filtered.length,
-              itemBuilder: (context, index) {
-                return _buildBookingCard(filtered[index]);
-              },
-            ),
+      body: bookingsAsync.when(
+        data: (bookings) {
+          final filtered = _filter == 'All'
+              ? bookings
+              : bookings.where((b) {
+                  if (_filter == 'Completed' && b.status == BookingStatus.tripCompleted) return true;
+                  if (_filter == 'Cancelled' && b.status == BookingStatus.cancelled) return true;
+                  if (_filter == 'Upcoming' && 
+                      (b.status == BookingStatus.booked || b.status == BookingStatus.driverAccepted)) return true;
+                  return false;
+                }).toList();
+
+          if (filtered.isEmpty) return _buildEmptyState();
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              return _buildBookingCard(filtered[index]);
+            },
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(child: Text('Error: $err')),
+      ),
     );
   }
 
@@ -100,10 +87,20 @@ class _MyBookingsScreenState extends ConsumerState<MyBookingsScreen> {
     );
   }
 
-  Widget _buildBookingCard(Map<String, dynamic> booking) {
+  Widget _buildBookingCard(TripRequest booking) {
     Color statusColor = Colors.green;
-    if (booking['status'] == 'Cancelled') statusColor = Colors.red;
-    if (booking['status'] == 'Upcoming') statusColor = Colors.blue;
+    String statusText = 'Completed';
+    
+    if (booking.status == BookingStatus.cancelled) {
+      statusColor = Colors.red;
+      statusText = 'Cancelled';
+    } else if (booking.status == BookingStatus.booked || booking.status == BookingStatus.driverAccepted) {
+      statusColor = Colors.blue;
+      statusText = 'Upcoming';
+    } else if (booking.status == BookingStatus.tripStarted || booking.status == BookingStatus.driverArriving) {
+      statusColor = Colors.orange;
+      statusText = 'Ongoing';
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -123,23 +120,23 @@ class _MyBookingsScreenState extends ConsumerState<MyBookingsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      DateFormat('EEE, dd MMM yyyy').format(booking['date']),
+                      DateFormat('EEE, dd MMM yyyy').format(booking.tripDate),
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                       child: Text(
-                        booking['status'],
+                        statusText,
                         style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildRouteRow(Icons.my_location, booking['pickup'], Colors.green),
+                _buildRouteRow(Icons.my_location, booking.pickupLocation, Colors.green),
                 const SizedBox(height: 8),
-                _buildRouteRow(Icons.location_on, booking['drop'], Colors.red),
+                _buildRouteRow(Icons.location_on, booking.dropLocation, Colors.red),
               ],
             ),
           ),
@@ -153,11 +150,11 @@ class _MyBookingsScreenState extends ConsumerState<MyBookingsScreen> {
                   children: [
                     const Icon(Icons.person_outline, size: 16, color: Colors.grey),
                     const SizedBox(width: 8),
-                    Text(booking['driver'], style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
-                  ],
+                    Text(booking.driverId != null ? 'Driver Assigned' : 'Awaiting Driver', style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w600)),
+                   ],
                 ),
                 Text(
-                  '₹${booking['fare'].toInt()}',
+                  '₹${booking.estimatedFare.toInt()}',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryColor),
                 ),
               ],

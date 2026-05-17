@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../../../core/app_theme.dart';
+import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/models.dart';
+import '../../../core/firestore_service.dart';
 
 class DriverActiveTripScreen extends ConsumerStatefulWidget {
-  final Booking booking;
+  final TripRequest trip;
 
-  const DriverActiveTripScreen({super.key, required this.booking});
+  const DriverActiveTripScreen({super.key, required this.trip});
 
   @override
   ConsumerState<DriverActiveTripScreen> createState() => _DriverActiveTripScreenState();
@@ -53,23 +54,27 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
     setState(() {
       _isTripEnded = true;
       // Calculate final fare: booking charge + distance * price_per_km
-      _finalFare = widget.booking.totalFare + (_distanceCovered * 15); // mock 15 per km
+      _finalFare = widget.trip.estimatedFare + (_distanceCovered * 15); // mock 15 per km
     });
   }
 
-  void _sendPaymentRequest() {
-    // Update booking in global state for earnings/history
-    ref.read(bookingProvider.notifier).updateStatus(widget.booking.id, 'Completed');
+  Future<void> _sendPaymentRequest() async {
+    // Update booking in global state for earnings/history (Legacy)
+    ref.read(bookingProvider.notifier).updateStatus(widget.trip.id, BookingStatus.tripCompleted);
     
-    // In a real app we'd update fare too. For demo, we'll just show the success toast.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Payment request for ₹${_finalFare.toStringAsFixed(0)} sent to customer!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-    Navigator.pop(context);
+    // Update the real Firestore TripRequest so the Customer gets syncing via Streams
+    await ref.read(firestoreServiceProvider).completeTripFromDriver(widget.trip.id, _distanceCovered, _finalFare);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment request for ₹${_finalFare.toStringAsFixed(0)} sent to customer!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -173,7 +178,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
             Column(
               children: [
                 const Text('Est. Fare', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                Text('₹${(widget.booking.totalFare + (_distanceCovered*15)).toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                Text('₹${(widget.trip.estimatedFare + (_distanceCovered*15)).toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
               ],
             ),
           ],

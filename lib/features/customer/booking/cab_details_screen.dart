@@ -144,9 +144,7 @@ class CabDetailsScreen extends StatelessWidget {
           const Text('Vehicle Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           _buildDetailRow('Model', driver.vehicleModel),
-          _buildDetailRow('Number', driver.vehicleNumber),
           _buildDetailRow('Type', driver.vehicleType),
-          _buildDetailRow('Fuel Type', 'Petrol/CNG'),
         ],
       ),
     );

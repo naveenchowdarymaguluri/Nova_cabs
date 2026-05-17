@@ -106,8 +106,8 @@ class TravelAgency {
     required this.whatsappNumber,
     required this.email,
     required this.address,
-    required this.gstNumber,
-    required this.bankDetails,
+    this.gstNumber = '',
+    this.bankDetails = '',
     this.isActive = true,
   });
 }

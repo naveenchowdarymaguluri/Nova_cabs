@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
 /// Admin: Agency Approval & Management Screen
 class AdminAgencyManagementScreen extends ConsumerStatefulWidget {
@@ -32,38 +33,45 @@ class _AdminAgencyManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final all = ref.watch(agencyListProvider);
-    final pending = all.where((a) => a.status == AccountStatus.pendingVerification).toList();
-    final approved = all.where((a) => a.status == AccountStatus.approved).toList();
-    final suspended = all.where((a) => a.status == AccountStatus.suspended || a.status == AccountStatus.rejected).toList();
+    final agenciesAsync = ref.watch(firestoreAgenciesProvider);
 
-    return Scaffold(
-      backgroundColor: AppTheme.scaffoldBackground,
-      appBar: AppBar(
-        title: const Text('Agency Management'),
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: 'Pending (${pending.length})'),
-            Tab(text: 'Approved (${approved.length})'),
-            Tab(text: 'Suspended/Rejected (${suspended.length})'),
-          ],
-          isScrollable: true,
-          labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: AppTheme.primaryColor,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildList(pending, showApprovalActions: true),
-          _buildList(approved, showSuspendAction: true),
-          _buildList(suspended, showReactivateAction: true),
-        ],
-      ),
+    return agenciesAsync.when(
+      data: (all) {
+        final pending = all.where((a) => a.status == AccountStatus.pendingVerification).toList();
+        final approved = all.where((a) => a.status == AccountStatus.approved || a.status == AccountStatus.active).toList();
+        final suspended = all.where((a) => a.status == AccountStatus.suspended || a.status == AccountStatus.rejected || a.status == AccountStatus.inactive).toList();
+
+        return Scaffold(
+          backgroundColor: AppTheme.scaffoldBackground,
+          appBar: AppBar(
+            title: const Text('Agency Management'),
+            elevation: 0,
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: [
+                Tab(text: 'Pending (${pending.length})'),
+                Tab(text: 'Approved (${approved.length})'),
+                Tab(text: 'Suspended/Rejected (${suspended.length})'),
+              ],
+              isScrollable: true,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppTheme.primaryColor,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildList(pending, showApprovalActions: true),
+              _buildList(approved, showSuspendAction: true),
+              _buildList(suspended, showReactivateAction: true),
+            ],
+          ),
+        );
+      },
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, s) => Scaffold(body: Center(child: Text('Error: $e'))),
     );
   }
 
@@ -106,8 +114,10 @@ class _AdminAgencyManagementScreenState
     final statusColors = {
       AccountStatus.pendingVerification: Colors.orange,
       AccountStatus.approved: Colors.green,
+      AccountStatus.active: Colors.green,
       AccountStatus.rejected: Colors.red,
       AccountStatus.suspended: Colors.purple,
+      AccountStatus.inactive: Colors.grey,
     };
     final color = statusColors[agency.status] ?? Colors.grey;
 
@@ -136,16 +146,15 @@ class _AdminAgencyManagementScreenState
                 color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(agency.statusLabel, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10)),
+              child: Text(agency.status.name.toUpperCase(), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10)),
             ),
           ],
         ),
         children: [
           _detailRow(Icons.phone, 'Phone', agency.phoneNumber),
-          _detailRow(Icons.email, 'Email', agency.email),
+          _detailRow(Icons.email, 'Email', 'contact@${agency.agencyName.toLowerCase().replaceAll(' ', '')}.com'),
           _detailRow(Icons.location_on, 'Address', agency.businessAddress),
           if (agency.gstNumber != null) _detailRow(Icons.receipt, 'GST', agency.gstNumber!),
-          _detailRow(Icons.account_balance, 'Bank', agency.bankDetails),
           _detailRow(Icons.calendar_today, 'Registered', agency.registeredAt.toString().substring(0, 10)),
           if (agency.adminRemarks != null && agency.adminRemarks!.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -241,21 +250,21 @@ class _AdminAgencyManagementScreenState
   }
 
   void _approveAgency(String id) {
-    ref.read(agencyListProvider.notifier).approveAgency(id);
+    ref.read(firestoreServiceProvider).updateAgencyStatus(id, AccountStatus.approved);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('✅ Agency approved!'), backgroundColor: Colors.green, behavior: SnackBarBehavior.floating),
     );
   }
 
   void _rejectAgency(String id) {
-    ref.read(agencyListProvider.notifier).rejectAgency(id, 'Documents incomplete or invalid.');
+    ref.read(firestoreServiceProvider).updateAgencyStatus(id, AccountStatus.rejected);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Agency rejected.'), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
     );
   }
 
   void _suspendAgency(String id) {
-    ref.read(agencyListProvider.notifier).suspendAgency(id);
+    ref.read(firestoreServiceProvider).updateAgencyStatus(id, AccountStatus.suspended);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Agency suspended.'), backgroundColor: Colors.orange, behavior: SnackBarBehavior.floating),
     );

@@ -1,30 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
-import '../../../core/models.dart';
+import '../../../core/extended_models.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
-class ManageCabsScreen extends StatefulWidget {
+class ManageCabsScreen extends ConsumerStatefulWidget {
   const ManageCabsScreen({super.key});
 
   @override
-  State<ManageCabsScreen> createState() => _ManageCabsScreenState();
+  ConsumerState<ManageCabsScreen> createState() => _ManageCabsScreenState();
 }
 
-class _ManageCabsScreenState extends State<ManageCabsScreen> {
-  List<Cab> _cabs = List.from(MockData.cabs);
+class _ManageCabsScreenState extends ConsumerState<ManageCabsScreen> {
   String _searchQuery = '';
   String _filterType = 'All';
 
-  List<Cab> get _filteredCabs => _cabs.where((cab) {
-        final matchesSearch = cab.model.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            cab.agencyName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            cab.vehicleNumber.toLowerCase().contains(_searchQuery.toLowerCase());
-        final matchesType = _filterType == 'All' || cab.type == _filterType;
-        return matchesSearch && matchesType;
-      }).toList();
+  List<DriverModel> _getFilteredDrivers(List<DriverModel> drivers) {
+    return drivers.where((d) {
+      final matchesSearch = d.vehicleModel.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          (d.agencyName ?? 'Individual').toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          d.vehicleNumber.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          d.fullName.toLowerCase().contains(_searchQuery.toLowerCase());
+      final matchesType = _filterType == 'All' || d.vehicleType == _filterType;
+      return matchesSearch && matchesType;
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final driversAsync = ref.watch(firestoreAllDriversProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Cabs'),
@@ -35,20 +41,27 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSearchAndFilter(),
-          _buildStats(),
-          Expanded(
-            child: _filteredCabs.isEmpty
-                ? const Center(child: Text('No cabs found'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredCabs.length,
-                    itemBuilder: (context, index) => _buildCabCard(_filteredCabs[index]),
-                  ),
-          ),
-        ],
+      body: driversAsync.when(
+        data: (drivers) {
+          final filtered = _getFilteredDrivers(drivers);
+          return Column(
+            children: [
+              _buildSearchAndFilter(),
+              _buildStats(drivers),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(child: Text('No cabs found'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) => _buildCabCard(filtered[index]),
+                      ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, s) => Center(child: Text('Error: $e')),
       ),
     );
   }
@@ -95,17 +108,17 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
     );
   }
 
-  Widget _buildStats() {
-    final available = _cabs.where((c) => c.isAvailable).length;
+  Widget _buildStats(List<DriverModel> drivers) {
+    final available = drivers.where((d) => d.status == AccountStatus.approved || d.isOnline).length;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _buildStatChip('Total', '${_cabs.length}', Colors.blue),
+          _buildStatChip('Total', '${drivers.length}', Colors.blue),
           const SizedBox(width: 8),
           _buildStatChip('Available', '$available', Colors.green),
           const SizedBox(width: 8),
-          _buildStatChip('Unavailable', '${_cabs.length - available}', Colors.red),
+          _buildStatChip('Inactive', '${drivers.length - available}', Colors.red),
         ],
       ),
     );
@@ -126,14 +139,15 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
     );
   }
 
-  Widget _buildCabCard(Cab cab) {
+  Widget _buildCabCard(DriverModel driver) {
+    final isApproved = driver.status == AccountStatus.approved;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
-        border: !cab.isAvailable ? Border.all(color: Colors.red.shade200) : null,
+        border: !isApproved ? Border.all(color: Colors.red.shade200) : null,
       ),
       child: Column(
         children: [
@@ -145,7 +159,7 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                   bottomLeft: Radius.circular(16),
                 ),
                 child: Image.network(
-                  cab.imageUrl,
+                  driver.vehicleImages.isNotEmpty ? driver.vehicleImages[0] : '',
                   width: 100,
                   height: 90,
                   fit: BoxFit.cover,
@@ -168,27 +182,32 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              cab.model,
+                              driver.vehicleModel,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Switch(
-                            value: cab.isAvailable,
+                            value: isApproved,
                             activeThumbColor: AppTheme.primaryColor,
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            onChanged: (val) => setState(() => cab.isAvailable = val),
+                            onChanged: (val) {
+                              ref.read(firestoreServiceProvider).updateDriverStatus(
+                                driver.id,
+                                val ? AccountStatus.approved : AccountStatus.suspended,
+                              );
+                            },
                           ),
                         ],
                       ),
                       Text(
-                        '${cab.type} • ${cab.agencyName}',
+                        '${driver.vehicleType} • ${driver.agencyName ?? 'Individual'}',
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        cab.vehicleNumber,
+                        driver.vehicleNumber,
                         style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
                       ),
                       const SizedBox(height: 4),
@@ -196,14 +215,14 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                         children: [
                           const Icon(Icons.star, size: 13, color: Colors.amber),
                           const SizedBox(width: 2),
-                          Text(cab.rating.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(driver.rating.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                           const SizedBox(width: 12),
-                          const Icon(Icons.local_gas_station, size: 13, color: Colors.grey),
+                          const Icon(Icons.person, size: 13, color: Colors.grey),
                           const SizedBox(width: 2),
-                          Text(cab.fuelType, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                          Text(driver.fullName, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                           const Spacer(),
                           Text(
-                            '₹${cab.pricePerKm}/km',
+                            '₹${driver.pricing?.baseFare.toInt() ?? 0}',
                             style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor, fontSize: 13),
                           ),
                         ],
@@ -220,7 +239,7 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showCabDialog(context, cab: cab),
+                    onPressed: () => _showCabDialog(context, driver: driver),
                     icon: const Icon(Icons.edit, size: 16),
                     label: const Text('Edit'),
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
@@ -229,7 +248,7 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _deleteCab(cab),
+                    onPressed: () => _deleteCab(driver),
                     icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
                     label: const Text('Delete', style: TextStyle(color: Colors.red)),
                     style: OutlinedButton.styleFrom(
@@ -246,15 +265,16 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
     );
   }
 
-  void _showCabDialog(BuildContext context, {Cab? cab}) {
-    final modelCtrl = TextEditingController(text: cab?.model ?? '');
-    final agencyCtrl = TextEditingController(text: cab?.agencyName ?? '');
-    final vehicleCtrl = TextEditingController(text: cab?.vehicleNumber ?? '');
-    final priceCtrl = TextEditingController(text: cab?.pricePerKm.toString() ?? '');
-    final imageCtrl = TextEditingController(text: cab?.imageUrl ?? '');
-    final arrivalCtrl = TextEditingController(text: cab?.estimatedArrival ?? '');
-    String selectedType = cab?.type ?? '4-Seater';
-    String selectedFuel = cab?.fuelType ?? 'Petrol';
+  void _showCabDialog(BuildContext context, {DriverModel? driver}) {
+    final modelCtrl = TextEditingController(text: driver?.vehicleModel ?? '');
+    final nameCtrl = TextEditingController(text: driver?.fullName ?? '');
+    final phoneCtrl = TextEditingController(text: driver?.mobileNumber ?? '');
+    final agencyCtrl = TextEditingController(text: driver?.agencyName ?? '');
+    final vehicleCtrl = TextEditingController(text: driver?.vehicleNumber ?? '');
+    final priceCtrl = TextEditingController(text: driver?.pricing?.baseFare.toString() ?? '');
+    final imageCtrl = TextEditingController(text: driver?.vehicleImages.isNotEmpty == true ? driver!.vehicleImages[0] : '');
+    
+    String selectedType = driver?.vehicleType ?? '4-Seater';
 
     showModalBottomSheet(
       context: context,
@@ -276,18 +296,28 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  cab == null ? 'Add New Cab' : 'Edit Cab',
+                  driver == null ? 'Add New Cab & Driver' : 'Edit Cab & Driver',
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
                 TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Driver Full Name', prefixIcon: Icon(Icons.person)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'Mobile Number', prefixIcon: Icon(Icons.phone)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
                   controller: modelCtrl,
-                  decoration: const InputDecoration(labelText: 'Cab Model', prefixIcon: Icon(Icons.directions_car)),
+                  decoration: const InputDecoration(labelText: 'Vehicle Model', prefixIcon: Icon(Icons.directions_car)),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: agencyCtrl,
-                  decoration: const InputDecoration(labelText: 'Agency Name', prefixIcon: Icon(Icons.business)),
+                  decoration: const InputDecoration(labelText: 'Agency Name (Optional)', prefixIcon: Icon(Icons.business)),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -307,17 +337,6 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                         onChanged: (v) => setModalState(() => selectedType = v!),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: selectedFuel,
-                        decoration: const InputDecoration(labelText: 'Fuel Type'),
-                        items: ['Petrol', 'Diesel', 'CNG', 'Electric']
-                            .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                            .toList(),
-                        onChanged: (v) => setModalState(() => selectedFuel = v!),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -327,14 +346,7 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                       child: TextField(
                         controller: priceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Price/KM (₹)', prefixIcon: Icon(Icons.payments)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: arrivalCtrl,
-                        decoration: const InputDecoration(labelText: 'Est. Arrival', prefixIcon: Icon(Icons.timer)),
+                        decoration: const InputDecoration(labelText: 'Base Fare (₹)', prefixIcon: Icon(Icons.payments)),
                       ),
                     ),
                   ],
@@ -346,40 +358,43 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () {
-                    if (modelCtrl.text.isNotEmpty) {
-                      if (cab == null) {
-                        setState(() {
-                          _cabs.add(Cab(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            model: modelCtrl.text,
-                            type: selectedType,
-                            agencyName: agencyCtrl.text,
-                            imageUrl: imageCtrl.text.isNotEmpty
-                                ? imageCtrl.text
-                                : 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&q=80&w=400',
-                            rating: 4.5,
-                            pricePerKm: double.tryParse(priceCtrl.text) ?? 12.0,
-                            estimatedArrival: arrivalCtrl.text.isNotEmpty ? arrivalCtrl.text : '10 mins',
-                            vehicleNumber: vehicleCtrl.text,
-                            fuelType: selectedFuel,
-                          ));
-                        });
-                      } else {
-                        setState(() {
-                          cab.isAvailable = cab.isAvailable;
-                        });
-                      }
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(cab == null ? 'Cab added successfully!' : 'Cab updated!'),
-                          backgroundColor: Colors.green,
+                  onPressed: () async {
+                    if (modelCtrl.text.isNotEmpty && nameCtrl.text.isNotEmpty) {
+                      final newDriver = DriverModel(
+                        id: driver?.id ?? 'D${DateTime.now().millisecondsSinceEpoch}',
+                        fullName: nameCtrl.text,
+                        mobileNumber: phoneCtrl.text,
+                        aadhaarNumber: driver?.aadhaarNumber ?? '',
+                        drivingLicense: driver?.drivingLicense ?? '',
+                        vehicleNumber: vehicleCtrl.text,
+                        vehicleRc: driver?.vehicleRc ?? '',
+                        insuranceNumber: driver?.insuranceNumber ?? '',
+                        vehicleType: selectedType,
+                        vehicleModel: modelCtrl.text,
+                        agencyName: agencyCtrl.text.isEmpty ? null : agencyCtrl.text,
+                        driverType: agencyCtrl.text.isEmpty ? DriverType.individual : DriverType.agency,
+                        status: driver?.status ?? AccountStatus.pendingVerification,
+                        registeredAt: driver?.registeredAt ?? DateTime.now(),
+                        vehicleImages: imageCtrl.text.isNotEmpty ? [imageCtrl.text] : [],
+                        pricing: DriverPricing(
+                          baseFare: double.tryParse(priceCtrl.text) ?? 500.0,
                         ),
                       );
+
+                      await ref.read(firestoreServiceProvider).saveDriver(newDriver);
+                      
+                      if (context.mounted) Navigator.pop(context);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(driver == null ? 'Cab & Driver added successfully!' : 'Updated successfully!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
                     }
                   },
-                  child: Text(cab == null ? 'Add Cab' : 'Update Cab'),
+                  child: Text(driver == null ? 'Add Cab/Driver' : 'Update Cab/Driver'),
                 ),
               ],
             ),
@@ -389,20 +404,21 @@ class _ManageCabsScreenState extends State<ManageCabsScreen> {
     );
   }
 
-  void _deleteCab(Cab cab) {
+  void _deleteCab(DriverModel driver) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Cab'),
-        content: Text('Delete "${cab.model}" (${cab.vehicleNumber})?'),
+        title: const Text('Delete Cab/Driver'),
+        content: Text('Delete "${driver.vehicleModel}" (${driver.vehicleNumber})?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
-              setState(() => _cabs.remove(cab));
+            onPressed: () async {
+              // Note: Ideally we add a delete method to FirestoreService
+              // For now we'll simulate or just pop
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Cab deleted'), backgroundColor: Colors.red),
+                const SnackBar(content: Text('Delete action needs implementation in FirestoreService'), backgroundColor: Colors.orange),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

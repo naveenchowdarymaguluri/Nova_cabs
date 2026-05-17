@@ -193,7 +193,7 @@ class AgencyModel {
   final String phoneNumber;
   final String businessAddress;
   final String? gstNumber;
-  final String bankDetails;
+  final String? bankDetails;
   final String? documentsPath;
   final AccountStatus status;
   final int totalDrivers;
@@ -211,7 +211,7 @@ class AgencyModel {
     required this.phoneNumber,
     required this.businessAddress,
     this.gstNumber,
-    required this.bankDetails,
+    this.bankDetails,
     this.documentsPath,
     this.status = AccountStatus.pendingVerification,
     this.totalDrivers = 0,
@@ -320,6 +320,43 @@ class TripRequest {
     this.customerFeedback,
     required this.createdAt,
   });
+
+  TripRequest copyWith({
+    BookingStatus? status,
+    String? driverId,
+    double? advancePaid,
+    double? finalFare,
+    double? actualDistance,
+    PaymentStatus? paymentStatus,
+    double? customerRating,
+    String? customerFeedback,
+  }) {
+    return TripRequest(
+      id: id,
+      bookingId: bookingId,
+      customerId: customerId,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      pickupLocation: pickupLocation,
+      dropLocation: dropLocation,
+      estimatedDistance: estimatedDistance,
+      estimatedFare: estimatedFare,
+      cabType: cabType,
+      tripDate: tripDate,
+      tripTime: tripTime,
+      status: status ?? this.status,
+      driverId: driverId ?? this.driverId,
+      advancePaid: advancePaid ?? this.advancePaid,
+      finalFare: finalFare ?? this.finalFare,
+      actualDistance: actualDistance ?? this.actualDistance,
+      rentalPackage: rentalPackage,
+      paymentMethod: paymentMethod,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      customerRating: customerRating ?? this.customerRating,
+      customerFeedback: customerFeedback ?? this.customerFeedback,
+      createdAt: createdAt,
+    );
+  }
 }
 
 // ─── VEHICLE MODEL ────────────────────────────────────────────────────────────
@@ -329,7 +366,7 @@ class VehicleModel {
   final String vehicleNumber;
   final String model;
   final String type; // 4-Seater, 7-Seater, 13-Seater
-  final String fuelType;
+  final String? fuelType;
   final String rcNumber;
   final String insuranceNumber;
   final String? agencyId;
@@ -343,7 +380,7 @@ class VehicleModel {
     required this.vehicleNumber,
     required this.model,
     required this.type,
-    required this.fuelType,
+    this.fuelType,
     required this.rcNumber,
     required this.insuranceNumber,
     this.agencyId,

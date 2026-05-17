@@ -57,7 +57,7 @@ class _AgencyRegistrationScreenState
   }
 
   Widget _buildStepIndicator() {
-    final steps = ['Agency Info', 'Owner Info', 'Bank Details', 'Submit'];
+    final steps = ['Agency Info', 'Owner Info', 'Submit'];
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -112,8 +112,6 @@ class _AgencyRegistrationScreenState
         return _buildAgencyInfoStep();
       case 1:
         return _buildOwnerInfoStep();
-      case 2:
-        return _buildBankDetailsStep();
       default:
         return _buildReviewStep();
     }
@@ -261,12 +259,6 @@ class _AgencyRegistrationScreenState
           ['Mobile Number', widget.phone],
           ['Email', _emailController.text],
         ], Icons.person_outline, Colors.blue),
-        const SizedBox(height: 12),
-        _reviewCard('Bank Details', [
-          ['Bank Name', _bankNameController.text],
-          ['Account No', _bankAccountController.text],
-          ['IFSC Code', _ifscController.text],
-        ], Icons.account_balance, Colors.green),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(14),
@@ -368,7 +360,7 @@ class _AgencyRegistrationScreenState
               ),
               child: _isSubmitting
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : Text(_currentStep == 3 ? 'Submit Application' : 'Next', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  : Text(_currentStep == 2 ? 'Submit Application' : 'Next', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           ),
         ],
@@ -377,7 +369,7 @@ class _AgencyRegistrationScreenState
   }
 
   void _next() {
-    if (_currentStep < 3) {
+    if (_currentStep < 2) {
       if (_formKey.currentState!.validate()) setState(() => _currentStep++);
     } else {
       _submit();
@@ -395,7 +387,7 @@ class _AgencyRegistrationScreenState
       phoneNumber: widget.phone,
       businessAddress: _addressController.text.trim(),
       gstNumber: _gstController.text.trim().isEmpty ? null : _gstController.text.trim(),
-      bankDetails: '${_bankNameController.text.trim()} - ${_bankAccountController.text.trim()} | IFSC: ${_ifscController.text.trim()}',
+      bankDetails: null,
       status: AccountStatus.pendingVerification,
       registeredAt: DateTime.now(),
       email: _emailController.text.trim(),

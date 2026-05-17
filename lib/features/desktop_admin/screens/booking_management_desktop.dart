@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/desktop_theme.dart';
 import '../shared/desktop_widgets.dart';
-import '../../../core/models.dart';
-import '../../../core/mock_data.dart';
+import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
 
 final bookingSearchProvider = StateProvider<String>((ref) => '');
@@ -18,12 +17,12 @@ class BookingManagementDesktopScreen extends ConsumerWidget {
     final search = ref.watch(bookingSearchProvider);
     final filter = ref.watch(bookingStatusFilterProvider);
 
-    List<Booking> filtered = bookings.where((b) {
+    List<TripRequest> filtered = bookings.where((b) {
       final matchSearch = search.isEmpty ||
           b.customerName.toLowerCase().contains(search.toLowerCase()) ||
           b.id.toLowerCase().contains(search.toLowerCase()) ||
           b.pickupLocation.toLowerCase().contains(search.toLowerCase());
-      final matchFilter = filter == 'All' || b.status == filter;
+      final matchFilter = filter == 'All' || b.status.name.toLowerCase() == filter.toLowerCase();
       return matchSearch && matchFilter;
     }).toList();
 
@@ -45,13 +44,13 @@ class BookingManagementDesktopScreen extends ConsumerWidget {
             children: [
               Expanded(child: _BStat('Total', '${bookings.length}', DesktopTheme.primaryBlue, Icons.book_online)),
               const SizedBox(width: 12),
-              Expanded(child: _BStat('Active', '${bookings.where((b) => b.status == 'Ongoing').length}', DesktopTheme.warningAmber, Icons.local_taxi)),
+              Expanded(child: _BStat('Active', '${bookings.where((b) => b.status == BookingStatus.tripStarted).length}', DesktopTheme.warningAmber, Icons.local_taxi)),
               const SizedBox(width: 12),
-              Expanded(child: _BStat('Completed', '${bookings.where((b) => b.status == 'Completed').length}', DesktopTheme.successGreen, Icons.check_circle)),
+              Expanded(child: _BStat('Completed', '${bookings.where((b) => b.status == BookingStatus.tripCompleted).length}', DesktopTheme.successGreen, Icons.check_circle)),
               const SizedBox(width: 12),
-              Expanded(child: _BStat('Cancelled', '${bookings.where((b) => b.status == 'Cancelled').length}', DesktopTheme.dangerRed, Icons.cancel)),
+              Expanded(child: _BStat('Cancelled', '${bookings.where((b) => b.status == BookingStatus.cancelled).length}', DesktopTheme.dangerRed, Icons.cancel)),
               const SizedBox(width: 12),
-              Expanded(child: _BStat('Revenue', '₹${bookings.where((b) => b.status == 'Completed').fold<double>(0, (s, b) => s + b.totalFare).toStringAsFixed(0)}', DesktopTheme.accentTeal, Icons.payments)),
+              Expanded(child: _BStat('Revenue', '₹${bookings.where((b) => b.status == BookingStatus.tripCompleted).fold<double>(0, (s, b) => s + (b.finalFare ?? b.estimatedFare)).toStringAsFixed(0)}', DesktopTheme.accentTeal, Icons.payments)),
             ],
           ),
           const SizedBox(height: 20),
@@ -194,7 +193,7 @@ class _TH extends StatelessWidget {
 }
 
 class _BookingRow extends StatefulWidget {
-  final Booking booking;
+  final TripRequest booking;
   final WidgetRef ref;
   final bool isOdd;
   const _BookingRow({required this.booking, required this.ref, required this.isOdd});
@@ -248,33 +247,33 @@ class _BookingRowState extends State<_BookingRow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(b.date, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Text(b.time, style: const TextStyle(fontSize: 11, color: DesktopTheme.textMuted)),
+                  Text(b.tripDate != null ? '${b.tripDate!.day}/${b.tripDate!.month}/${b.tripDate!.year}' : '-', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                  Text(b.tripTime ?? '-', style: const TextStyle(fontSize: 11, color: DesktopTheme.textMuted)),
                 ],
               ),
             ),
             Expanded(
               flex: 2,
-              child: Text('₹${b.totalFare.toStringAsFixed(0)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: DesktopTheme.textPrimary)),
+              child: Text('₹${(b.finalFare ?? b.estimatedFare).toStringAsFixed(0)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: DesktopTheme.textPrimary)),
             ),
             Expanded(
               flex: 2,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(b.paymentMethod, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  StatusBadge(b.paymentStatus, fontSize: 10),
+                  Text(b.paymentMethod.name.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                  StatusBadge(b.paymentStatus.name, fontSize: 10),
                 ],
               ),
             ),
-            Expanded(flex: 2, child: StatusBadge(b.status)),
+            Expanded(flex: 2, child: StatusBadge(b.status.name)),
             Expanded(
               flex: 2,
               child: Row(
                 children: [
                   _ActionBtn(icon: Icons.visibility_rounded, color: DesktopTheme.primaryBlue, tooltip: 'View', onTap: () => _showDetail(context, b)),
                   const SizedBox(width: 6),
-                  if (b.status != 'Cancelled' && b.status != 'Completed')
+                  if (b.status != BookingStatus.cancelled && b.status != BookingStatus.tripCompleted)
                     _ActionBtn(icon: Icons.cancel_rounded, color: DesktopTheme.dangerRed, tooltip: 'Cancel', onTap: () => widget.ref.read(bookingProvider.notifier).cancelBooking(b.id)),
                 ],
               ),
@@ -285,7 +284,7 @@ class _BookingRowState extends State<_BookingRow> {
     );
   }
 
-  void _showDetail(BuildContext context, Booking b) {
+  void _showDetail(BuildContext context, TripRequest b) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -312,11 +311,11 @@ class _BookingRowState extends State<_BookingRow> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Booking #${b.id}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                          Text('${b.date} at ${b.time}', style: const TextStyle(color: DesktopTheme.textMuted, fontSize: 13)),
+                          Text('${b.tripDate != null ? "${b.tripDate!.day}/${b.tripDate!.month}" : "-"} at ${b.tripTime ?? "-"}', style: const TextStyle(color: DesktopTheme.textMuted, fontSize: 13)),
                         ],
                       ),
                     ),
-                    StatusBadge(b.status),
+                    StatusBadge(b.status.name),
                     const SizedBox(width: 8),
                     IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
                   ],
@@ -328,14 +327,13 @@ class _BookingRowState extends State<_BookingRow> {
                 _Row2('Phone', b.customerPhone),
                 _Row2('Pickup', b.pickupLocation),
                 _Row2('Drop', b.dropLocation),
-                _Row2('Distance', '${b.totalDistance} km'),
-                _Row2('Cab', '${b.cab.model} (${b.cab.type})'),
-                _Row2('Vehicle No.', b.cab.vehicleNumber),
-                _Row2('Agency', b.cab.agencyName),
+                _Row2('Distance', '${b.estimatedDistance} km'),
+                _Row2('Cab Type', b.cabType ?? '-'),
+                _Row2('Driver ID', b.driverId ?? 'Not Assigned'),
                 const Divider(color: DesktopTheme.border),
-                _Row2('Total Fare', '₹${b.totalFare.toStringAsFixed(0)}'),
-                _Row2('Payment Method', b.paymentMethod),
-                _Row2('Payment Status', b.paymentStatus),
+                _Row2('Total Fare', '₹${(b.finalFare ?? b.estimatedFare).toStringAsFixed(0)}'),
+                _Row2('Payment Method', b.paymentMethod.name.toUpperCase()),
+                _Row2('Payment Status', b.paymentStatus.name),
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerRight,

@@ -405,7 +405,6 @@ class _AgencyCardState extends State<_AgencyCard> {
                 _DetailRow2('Email', a.email),
                 _DetailRow2('Address', a.businessAddress),
                 if (a.gstNumber != null) _DetailRow2('GST Number', a.gstNumber!),
-                _DetailRow2('Bank Details', a.bankDetails),
                 _DetailRow2('Registered', '${a.registeredAt.day}/${a.registeredAt.month}/${a.registeredAt.year}'),
                 const SizedBox(height: 16),
                 Row(

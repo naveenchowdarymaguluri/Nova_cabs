@@ -81,17 +81,17 @@ class AdminDashboard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildWelcomeBanner(),
+            _buildWelcomeBanner(ref),
             const SizedBox(height: 20),
             const Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            _buildStatGrid(context),
+            _buildStatGrid(context, ref),
             const SizedBox(height: 24),
             _buildQuickActions(context),
             const SizedBox(height: 24),
             const Text('Recent Bookings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            _buildRecentBookingsList(context),
+            _buildRecentBookingsList(context, ref),
             const SizedBox(height: 40),
           ],
         ),
@@ -99,7 +99,13 @@ class AdminDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildWelcomeBanner() {
+  Widget _buildWelcomeBanner(WidgetRef ref) {
+    final bookingsAsync = ref.watch(firestoreAllBookingsProvider);
+    final newBookingsCount = bookingsAsync.maybeWhen(
+      data: (list) => list.where((b) => b.status == BookingStatus.booked).length,
+      orElse: () => 0,
+    );
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -120,7 +126,7 @@ class AdminDashboard extends ConsumerWidget {
                 const Text('Nova Admin 👋', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text(
-                  'You have ${MockData.bookings.where((b) => b.status == 'New').length} new bookings today',
+                  'You have $newBookingsCount new bookings today',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -225,14 +231,26 @@ class AdminDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatGrid(BuildContext context) {
+  Widget _buildStatGrid(BuildContext context, WidgetRef ref) {
+    final bookingsAsync = ref.watch(firestoreAllBookingsProvider);
+    final driversAsync = ref.watch(firestoreApprovedDriversProvider);
+    final agenciesAsync = ref.watch(firestoreAgenciesProvider);
+
+    final totalBookings = bookingsAsync.maybeWhen(data: (list) => list.length, orElse: () => 0);
+    final ongoingBookings = bookingsAsync.maybeWhen(
+      data: (list) => list.where((b) => b.status == BookingStatus.driverAccepted || b.status == BookingStatus.arrived).length,
+      orElse: () => 0,
+    );
+    final totalDrivers = driversAsync.maybeWhen(data: (list) => list.length, orElse: () => 0);
+    final totalAgencies = agenciesAsync.maybeWhen(data: (list) => list.length, orElse: () => 0);
+
     final stats = [
-      {'title': 'Total Bookings', 'value': '${MockData.bookings.length}', 'icon': Icons.book_online, 'color': Colors.blue, 'screen': const BookingManagementScreen()},
-      {'title': 'Active Trips', 'value': '${MockData.bookings.where((b) => b.status == 'Ongoing').length}', 'icon': Icons.local_taxi, 'color': Colors.orange, 'screen': const BookingManagementScreen()},
+      {'title': 'Total Bookings', 'value': '$totalBookings', 'icon': Icons.book_online, 'color': Colors.blue, 'screen': const BookingManagementScreen()},
+      {'title': 'Active Trips', 'value': '$ongoingBookings', 'icon': Icons.local_taxi, 'color': Colors.orange, 'screen': const BookingManagementScreen()},
       {'title': 'Total Revenue', 'value': '₹4.2L', 'icon': Icons.payments, 'color': Colors.green, 'screen': const PaymentManagementScreen()},
       {'title': 'Avg. Rating', 'value': '4.6', 'icon': Icons.star, 'color': Colors.amber, 'screen': const RatingsFeedbackScreen()},
-      {'title': 'Total Cabs', 'value': '${MockData.cabs.length}', 'icon': Icons.directions_car, 'color': Colors.purple, 'screen': const ManageCabsScreen()},
-      {'title': 'Agencies', 'value': '${MockData.agencies.length}', 'icon': Icons.business, 'color': Colors.teal, 'screen': const TravelAgencyScreen()},
+      {'title': 'Total Drivers', 'value': '$totalDrivers', 'icon': Icons.directions_car, 'color': Colors.purple, 'screen': const AdminDriverManagementScreen()},
+      {'title': 'Agencies', 'value': '$totalAgencies', 'icon': Icons.business, 'color': Colors.teal, 'screen': const TravelAgencyScreen()},
     ];
 
     return GridView.count(
@@ -343,90 +361,99 @@ class AdminDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildRecentBookingsList(BuildContext context) {
-    final recentBookings = MockData.bookings.take(5).toList();
-    return Column(
-      children: [
-        ...recentBookings.map((booking) {
-          final statusColors = {
-            'Completed': Colors.green,
-            'Ongoing': Colors.blue,
-            'Confirmed': Colors.teal,
-            'Cancelled': Colors.red,
-            'New': Colors.orange,
-          };
-          final statusColor = statusColors[booking.status] ?? Colors.grey;
+  Widget _buildRecentBookingsList(BuildContext context, WidgetRef ref) {
+    final bookingsAsync = ref.watch(firestoreAllBookingsProvider);
+    
+    return bookingsAsync.when(
+      data: (allBookings) {
+        final recentBookings = allBookings.take(5).toList();
+        return Column(
+          children: [
+            ...recentBookings.map((booking) {
+              final statusColors = {
+                BookingStatus.tripCompleted: Colors.green,
+                BookingStatus.driverAccepted: Colors.blue,
+                BookingStatus.arrived: Colors.teal,
+                BookingStatus.cancelled: Colors.red,
+                BookingStatus.booked: Colors.orange,
+                BookingStatus.paymentCompleted: Colors.green,
+              };
+              final statusColor = statusColors[booking.status] ?? Colors.grey;
 
-          return GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const BookingManagementScreen()),
-            ),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    child: Text(
-                      booking.customerName[0],
-                      style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold),
-                    ),
+              return GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const BookingManagementScreen()),
+                ),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(booking.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        Text(
-                          '${booking.pickupLocation} → ${booking.dropLocation}',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  child: Row(
                     children: [
-                      Text(
-                        '₹${booking.totalFare.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 14),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                      CircleAvatar(
+                        backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
                         child: Text(
-                          booking.status,
-                          style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold),
+                          booking.customerName[0],
+                          style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold),
                         ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(booking.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text(
+                              '${booking.pickupLocation} → ${booking.dropLocation}',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '₹${(booking.finalFare ?? booking.estimatedFare).toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 14),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              booking.status.name.toUpperCase(),
+                              style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
+              );
+            }),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const BookingManagementScreen()),
               ),
+              child: const Text('View All Bookings →'),
             ),
-          );
-        }),
-        TextButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const BookingManagementScreen()),
-          ),
-          child: const Text('View All Bookings →'),
-        ),
-      ],
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, s) => Center(child: Text('Error loading recent bookings: $e')),
     );
   }
 }

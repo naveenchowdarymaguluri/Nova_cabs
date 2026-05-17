@@ -6,6 +6,9 @@ import 'extended_models.dart';
 import 'mock_data.dart';
 import 'models.dart';
 import 'extended_mock_data.dart';
+import 'auth_service.dart';
+import 'firestore_service.dart';
+import 'msg91_service.dart';
 
 // ─── AUTH STATE ───────────────────────────────────────────────────────────────
 
@@ -46,13 +49,37 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier() : super(const AuthState());
+  final AuthService _authService;
+  final FirestoreService _firestoreService;
 
-  void loginAsCustomer({required String name, required String phone}) {
+  AuthNotifier(this._authService, this._firestoreService) : super(const AuthState()) {
+    // Listen to Firebase Auth changes
+    _authService.authStateChanges.listen((user) {
+      if (user == null) {
+        state = const AuthState();
+      } else {
+        // Here we could fetch the user role/profile from Firestore
+        // For now, we'll keep the current state if already logged in
+      }
+    });
+  }
+
+  Future<void> loginAsCustomer({required String name, required String phone}) async {
+    final userId = _authService.currentUser?.uid ?? 'C${DateTime.now().millisecondsSinceEpoch}';
+    
+    final customer = Customer(
+      id: userId,
+      name: name,
+      phone: phone,
+      email: '',
+    );
+
+    await _firestoreService.saveCustomer(customer);
+
     state = AuthState(
       isLoggedIn: true,
       role: UserRole.customer,
-      userId: 'C${DateTime.now().millisecondsSinceEpoch}',
+      userId: userId,
       userName: name,
       userPhone: phone,
     );
@@ -88,78 +115,79 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
-  void logout() {
+  Future<void> logout() async {
+    await _authService.signOut();
     state = const AuthState();
   }
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier();
+  return AuthNotifier(
+    ref.watch(authServiceProvider),
+    ref.watch(firestoreServiceProvider),
+  );
 });
 
 // ─── DRIVER LIST PROVIDER ─────────────────────────────────────────────────────
 
 class DriverListNotifier extends StateNotifier<List<DriverModel>> {
-  DriverListNotifier() : super(MockDriverData.drivers);
+  final FirestoreService _firestoreService;
+
+  DriverListNotifier(this._firestoreService) : super([]) {
+    _listenToDrivers();
+  }
+
+  void _listenToDrivers() {
+    _firestoreService.streamAllDrivers().listen((drivers) {
+      state = drivers;
+    });
+  }
+
+  void _updateAndSave(String driverId, DriverModel Function(DriverModel) updateFn) {
+    final driver = state.where((d) => d.id == driverId).firstOrNull;
+    if (driver != null) {
+      final updated = updateFn(driver);
+      _firestoreService.saveDriver(updated);
+      // State will be updated via the stream listener
+    }
+  }
 
   void approveDriver(String driverId) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(status: AccountStatus.approved);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(status: AccountStatus.approved));
   }
 
   void rejectDriver(String driverId, String remarks) {
-    state = state.map((d) {
-      if (d.id == driverId) {
-        return d.copyWith(status: AccountStatus.rejected, adminRemarks: remarks);
-      }
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(status: AccountStatus.rejected, adminRemarks: remarks));
   }
 
   void suspendDriver(String driverId) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(status: AccountStatus.suspended);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(status: AccountStatus.suspended));
   }
 
   void toggleOnlineStatus(String driverId) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(isOnline: !d.isOnline);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(isOnline: !d.isOnline));
   }
 
   void addDriver(DriverModel driver) {
+    _firestoreService.saveDriver(driver);
     state = [...state, driver];
   }
 
   void updatePricing(String driverId, DriverPricing pricing) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(pricing: pricing);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(pricing: pricing));
   }
 
   void activateDriver(String driverId) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(status: AccountStatus.approved);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(status: AccountStatus.approved));
   }
 
   void unsuspendDriver(String driverId) {
-    state = state.map((d) {
-      if (d.id == driverId) return d.copyWith(status: AccountStatus.approved);
-      return d;
-    }).toList();
+    _updateAndSave(driverId, (d) => d.copyWith(status: AccountStatus.approved));
   }
 }
 
 final driverListProvider = StateNotifierProvider<DriverListNotifier, List<DriverModel>>((ref) {
-  return DriverListNotifier();
+  return DriverListNotifier(ref.watch(firestoreServiceProvider));
 });
 
 // Pending drivers (for admin approval)
@@ -177,41 +205,101 @@ final onlineDriversProvider = Provider<List<DriverModel>>((ref) {
   return ref.watch(driverListProvider).where((d) => d.isOnline && d.status == AccountStatus.approved).toList();
 });
 
+// ─── FIRESTORE STREAMS ────────────────────────────────────────────────────────
+
+// Listens directly to Firestore for online drivers
+final firestoreOnlineDriversProvider = StreamProvider<List<DriverModel>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamOnlineDrivers();
+});
+
+// Listens directly to Firestore for approved drivers
+final firestoreApprovedDriversProvider = StreamProvider<List<DriverModel>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamApprovedDrivers();
+});
+
+final firestoreAllDriversProvider = StreamProvider<List<DriverModel>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamAllDrivers();
+});
+
+// Listens to bookings for a specific customer
+final firestoreCustomerBookingsProvider = StreamProvider.family<List<TripRequest>, String>((ref, customerId) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamCustomerBookings(customerId);
+});
+
+// Listens to trips assigned to a specific driver
+final firestoreDriverTripsProvider = StreamProvider.family<List<TripRequest>, String>((ref, driverId) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamDriverTrips(driverId);
+});
+
+final firestoreAgencyDriversProvider = StreamProvider.family<List<DriverModel>, String>((ref, agencyId) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamAgencyDrivers(agencyId);
+});
+
+final firestoreAllBookingsProvider = StreamProvider<List<TripRequest>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamAllBookings();
+});
+
+final firestoreAgenciesProvider = StreamProvider<List<AgencyModel>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamAgencies();
+});
+
+final firestoreOffersProvider = StreamProvider<List<Offer>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamOffers();
+});
+
 // ─── AGENCY LIST PROVIDER ─────────────────────────────────────────────────────
 
 class AgencyListNotifier extends StateNotifier<List<AgencyModel>> {
-  AgencyListNotifier() : super(MockAgencyData.agencies);
+  final FirestoreService _firestoreService;
+
+  AgencyListNotifier(this._firestoreService) : super([]) {
+    _listenToAgencies();
+  }
+
+  void _listenToAgencies() {
+    _firestoreService.streamAgencies().listen((agencies) {
+      state = agencies;
+    });
+  }
+
+  void _updateAndSave(String agencyId, AgencyModel Function(AgencyModel) updateFn) {
+    final agency = state.where((a) => a.id == agencyId).firstOrNull;
+    if (agency != null) {
+      final updated = updateFn(agency);
+      _firestoreService.saveAgency(updated);
+      // State will be updated via the stream listener
+    }
+  }
 
   void approveAgency(String agencyId) {
-    state = state.map((a) {
-      if (a.id == agencyId) return a.copyWith(status: AccountStatus.approved);
-      return a;
-    }).toList();
+    _updateAndSave(agencyId, (a) => a.copyWith(status: AccountStatus.approved));
   }
 
   void rejectAgency(String agencyId, String remarks) {
-    state = state.map((a) {
-      if (a.id == agencyId) {
-        return a.copyWith(status: AccountStatus.rejected, adminRemarks: remarks);
-      }
-      return a;
-    }).toList();
+    _updateAndSave(agencyId, (a) => a.copyWith(status: AccountStatus.rejected, adminRemarks: remarks));
   }
 
   void suspendAgency(String agencyId) {
-    state = state.map((a) {
-      if (a.id == agencyId) return a.copyWith(status: AccountStatus.suspended);
-      return a;
-    }).toList();
+    _updateAndSave(agencyId, (a) => a.copyWith(status: AccountStatus.suspended));
   }
 
   void addAgency(AgencyModel agency) {
+    _firestoreService.saveAgency(agency);
     state = [...state, agency];
   }
 }
 
 final agencyListProvider = StateNotifierProvider<AgencyListNotifier, List<AgencyModel>>((ref) {
-  return AgencyListNotifier();
+  return AgencyListNotifier(ref.watch(firestoreServiceProvider));
 });
 
 final pendingAgenciesProvider = Provider<List<AgencyModel>>((ref) {
@@ -228,30 +316,34 @@ final approvedAgenciesProvider = Provider<List<AgencyModel>>((ref) {
 
 // ─── BOOKING PROVIDER ─────────────────────────────────────────────────────────
 
-class BookingNotifier extends StateNotifier<List<Booking>> {
-  BookingNotifier() : super(MockData.bookings);
+class BookingNotifier extends StateNotifier<List<TripRequest>> {
+  final FirestoreService _firestoreService;
 
-  void addBooking(Booking booking) {
-    state = [booking, ...state];
+  BookingNotifier(this._firestoreService) : super([]) {
+    _listenToBookings();
   }
 
-  void updateStatus(String bookingId, String status) {
-    state = state.map((b) {
-      if (b.id == bookingId) {
-        b.status = status;
-        return b;
-      }
-      return b;
-    }).toList();
+  void _listenToBookings() {
+    _firestoreService.streamAllBookings().listen((bookings) {
+      state = bookings;
+    });
+  }
+
+  void addBooking(TripRequest booking) {
+    _firestoreService.saveTripRequest(booking);
+  }
+
+  void updateStatus(String bookingId, BookingStatus status) {
+    _firestoreService.updateTripStatus(bookingId, status);
   }
 
   void cancelBooking(String bookingId) {
-    updateStatus(bookingId, 'Cancelled');
+    updateStatus(bookingId, BookingStatus.cancelled);
   }
 }
 
-final bookingProvider = StateNotifierProvider<BookingNotifier, List<Booking>>((ref) {
-  return BookingNotifier();
+final bookingProvider = StateNotifierProvider<BookingNotifier, List<TripRequest>>((ref) {
+  return BookingNotifier(ref.watch(firestoreServiceProvider));
 });
 
 // Driver-specific current trip
@@ -296,24 +388,40 @@ class OtpState {
 }
 
 class OtpNotifier extends StateNotifier<OtpState> {
-  OtpNotifier() : super(const OtpState());
+  final Msg91Service _msg91Service;
+
+  OtpNotifier(this._msg91Service) : super(const OtpState());
 
   Future<void> sendOtp(String phone) async {
     state = state.copyWith(isVerifying: true, phone: phone, error: null);
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
-    state = state.copyWith(isSent: true, isVerifying: false);
+    
+    // Using real Msg91 service
+    final success = await _msg91Service.sendOtp(phone);
+    
+    if (success) {
+      state = state.copyWith(isSent: true, isVerifying: false);
+    } else {
+      state = state.copyWith(
+        isVerifying: false, 
+        error: 'Failed to send OTP. Please check your phone number or try again later.'
+      );
+    }
   }
 
   Future<bool> verifyOtp(String otp) async {
     state = state.copyWith(isVerifying: true, error: null);
-    await Future.delayed(const Duration(seconds: 1));
-    // For demo: any 6-digit OTP works, or use 123456
-    if (otp.length == 6) {
+    
+    // Using real Msg91 service for verification
+    final success = await _msg91Service.verifyOtp(state.phone, otp);
+    
+    if (success) {
       state = state.copyWith(isVerified: true, isVerifying: false);
       return true;
     } else {
-      state = state.copyWith(isVerifying: false, error: 'Invalid OTP. Please try again.');
+      state = state.copyWith(
+        isVerifying: false, 
+        error: 'Invalid OTP. Please try again.'
+      );
       return false;
     }
   }
@@ -324,7 +432,7 @@ class OtpNotifier extends StateNotifier<OtpState> {
 }
 
 final otpProvider = StateNotifierProvider<OtpNotifier, OtpState>((ref) {
-  return OtpNotifier();
+  return OtpNotifier(ref.watch(msg91ServiceProvider));
 });
 
 // ─── DRIVER ONLINE STATUS ─────────────────────────────────────────────────────

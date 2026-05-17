@@ -37,18 +37,8 @@ class _CabListingScreenState extends ConsumerState<CabListingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final drivers = ref.watch(approvedDriversProvider);
+    final driversAsync = ref.watch(firestoreApprovedDriversProvider);
     
-    // Filtering
-    var filteredDrivers = drivers.where((d) => d.vehicleType == _selectedFilterType).toList();
-    
-    // Sorting
-    if (_sortBy == 'Price') {
-      filteredDrivers.sort((a, b) => (a.pricing?.baseFare ?? 0).compareTo(b.pricing?.baseFare ?? 0));
-    } else if (_sortBy == 'Rating') {
-      filteredDrivers.sort((a, b) => b.rating.compareTo(a.rating));
-    }
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -69,21 +59,37 @@ class _CabListingScreenState extends ConsumerState<CabListingScreen> {
           child: _buildFilterBar(),
         ),
       ),
-      body: Column(
-        children: [
-          _buildSortOptions(),
-          Expanded(
-            child: filteredDrivers.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: filteredDrivers.length,
-                    itemBuilder: (context, index) {
-                      return _buildDriverCard(filteredDrivers[index]);
-                    },
-                  ),
-          ),
-        ],
+      body: driversAsync.when(
+        data: (drivers) {
+          // Filtering
+          var filteredDrivers = drivers.where((d) => d.vehicleType == _selectedFilterType).toList();
+          
+          // Sorting
+          if (_sortBy == 'Price') {
+            filteredDrivers.sort((a, b) => (a.pricing?.baseFare ?? 0).compareTo(b.pricing?.baseFare ?? 0));
+          } else if (_sortBy == 'Rating') {
+            filteredDrivers.sort((a, b) => b.rating.compareTo(a.rating));
+          }
+
+          return Column(
+            children: [
+              _buildSortOptions(),
+              Expanded(
+                child: filteredDrivers.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: filteredDrivers.length,
+                        itemBuilder: (context, index) {
+                          return _buildDriverCard(filteredDrivers[index]);
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(child: Text('Error: $err')),
       ),
     );
   }

@@ -152,7 +152,7 @@ class BookingConfirmationScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(driver.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              Text('${driver.vehicleModel} • ${driver.vehicleNumber}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+              Text(driver.vehicleModel, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
             ],
           ),
         ),

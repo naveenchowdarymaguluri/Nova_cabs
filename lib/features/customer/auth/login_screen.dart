@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/mock_data.dart';
-import '../../../core/extended_mock_data.dart';
 import '../../shared/otp_screen.dart';
 import '../home/home_screen.dart';
 import '../../driver/dashboard/driver_dashboard.dart';
@@ -235,28 +233,19 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
     );
   }
 
-  void _onVerified(String phone) {
-    // Standardize phone for comparison
-    String normalize(String p) {
-      String n = p.replaceAll(RegExp(r'\D'), '');
-      if (n.startsWith('91') && n.length > 10) n = n.substring(2);
-      return n;
-    }
-
-    final searchPhone = normalize(phone);
+  Future<void> _onVerified(String phone) async {
+    setState(() => _isLoading = true);
+    final firestore = ref.read(firestoreServiceProvider);
 
     // Check if phone belongs to a Driver
-    final driver = MockDriverData.drivers.where((d) {
-      final dp = normalize(d.mobileNumber);
-      return dp == searchPhone;
-    }).firstOrNull;
-
+    final driver = await firestore.getDriverByPhone(phone);
     if (driver != null) {
       ref.read(authProvider.notifier).loginAsDriver(
             name: driver.fullName,
             phone: phone,
             id: driver.id,
           );
+      if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => DriverDashboard(driver: driver)),
@@ -266,17 +255,14 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
     }
 
     // Check if phone belongs to an Agency
-    final agency = MockAgencyData.agencies.where((a) {
-      final ap = normalize(a.phoneNumber);
-      return ap == searchPhone;
-    }).firstOrNull;
-
+    final agency = await firestore.getAgencyByPhone(phone);
     if (agency != null) {
       ref.read(authProvider.notifier).loginAsAgency(
             name: agency.agencyName,
             phone: phone,
             id: agency.id,
           );
+      if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => AgencyDashboard(agency: agency)),
@@ -286,23 +272,21 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
     }
 
     // Existing Customer check
-    final customer = MockData.customers.where((c) {
-      final cp = normalize(c.phone);
-      return cp == searchPhone;
-    }).firstOrNull;
-
+    final customer = await firestore.getCustomerByPhone(phone);
     if (customer != null) {
       // Login existing customer
-      ref.read(authProvider.notifier).loginAsCustomer(
+      await ref.read(authProvider.notifier).loginAsCustomer(
             name: customer.name,
             phone: phone,
           );
     } else {
       // New customer (using name from input if available)
       final name = _nameController.text.trim().isEmpty ? 'Guest User' : _nameController.text.trim();
-      ref.read(authProvider.notifier).loginAsCustomer(name: name, phone: phone);
+      await ref.read(authProvider.notifier).loginAsCustomer(name: name, phone: phone);
     }
 
+    setState(() => _isLoading = false);
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),

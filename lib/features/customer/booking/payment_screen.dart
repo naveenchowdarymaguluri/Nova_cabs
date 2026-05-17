@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
+import '../../../core/firestore_service.dart';
 import '../../../core/models.dart';
 import '../tracking/trip_tracking_screen.dart';
 
@@ -119,7 +120,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       child: Column(
         children: [
           Text(
-            widget.paymentStage == 'Advance' ? 'Booking Charge' : 'Balance Amount',
+            widget.paymentStage == 'Advance' ? 'Advance Payment' : 'Balance Amount',
             style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 8),
@@ -213,7 +214,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         cabType: widget.driver.vehicleType,
         tripDate: widget.date,
         tripTime: '10:00 AM',
-        status: BookingStatus.driverAccepted, // Assume driver accepted immediately for flow
+        status: BookingStatus.booked, // Driver needs to accept it via dashboard
         driverId: widget.driver.id,
         advancePaid: 50.0,
         paymentStatus: PaymentStatus.success,
@@ -221,39 +222,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         rentalPackage: widget.rentalPackage,
       );
 
-      // Create a Booking object for the global provider
-      final newBooking = Booking(
-        id: trip.bookingId,
-        pickupLocation: widget.pickup,
-        dropLocation: widget.drop,
-        date: DateFormat('dd MMM yyyy').format(widget.date),
-        time: '10:00 AM',
-        cab: Cab(
-          id: widget.driver.id,
-          model: widget.driver.vehicleModel,
-          type: widget.driver.vehicleType,
-          agencyName: widget.driver.agencyName ?? 'Individual',
-          imageUrl: widget.driver.vehicleImages.isNotEmpty ? widget.driver.vehicleImages[0] : '',
-          rating: widget.driver.rating,
-          pricePerKm: widget.driver.pricing?.pricePerKm ?? 12.0,
-          estimatedArrival: '8 mins',
-          vehicleNumber: widget.driver.vehicleNumber,
-        ),
-        totalDistance: widget.distance,
-        totalFare: widget.totalFare,
-        status: 'Completed', // Mark as Completed for Demo to show in earnings immediately
-        customerName: authState.userName ?? 'Customer',
-        customerPhone: authState.userPhone ?? '',
-        paymentMethod: _selectedMethod,
-        paymentStatus: 'Success',
-        driverId: widget.driver.id,
-        rentalPackage: widget.rentalPackage,
-      );
+      // Save explicitly to Firestore 'bookings' collection
+      await ref.read(firestoreServiceProvider).createBooking(trip);
 
-      // Add to global state
-      ref.read(bookingProvider.notifier).addBooking(newBooking);
+      // Add to global state (optional if stream is listening, but provides immediate feedback)
+      ref.read(bookingProvider.notifier).addBooking(trip);
 
-      // In a real app, this would be saved to DB. For now, we'll navigate to tracking.
+      // Navigate to tracking
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => TripTrackingScreen(trip: trip, driver: widget.driver)),

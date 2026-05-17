@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
 /// Admin: Driver Approval & Management Screen
 class AdminDriverManagementScreen extends ConsumerStatefulWidget {
@@ -32,41 +33,48 @@ class _AdminDriverManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final allDrivers = ref.watch(driverListProvider);
-    final pending = allDrivers.where((d) => d.status == AccountStatus.pendingVerification).toList();
-    final approved = allDrivers.where((d) => d.status == AccountStatus.approved).toList();
-    final rejected = allDrivers.where((d) => d.status == AccountStatus.rejected).toList();
-    final suspended = allDrivers.where((d) => d.status == AccountStatus.suspended).toList();
+    final driversAsync = ref.watch(firestoreAllDriversProvider);
 
-    return Scaffold(
-      backgroundColor: AppTheme.scaffoldBackground,
-      appBar: AppBar(
-        title: const Text('Driver Management'),
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: 'Pending (${pending.length})'),
-            Tab(text: 'Approved (${approved.length})'),
-            Tab(text: 'Rejected (${rejected.length})'),
-            Tab(text: 'Suspended (${suspended.length})'),
-          ],
-          isScrollable: true,
-          labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: AppTheme.primaryColor,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildDriverList(pending, showApprovalActions: true),
-          _buildDriverList(approved, showSuspendAction: true),
-          _buildDriverList(rejected),
-          _buildDriverList(suspended, showReactivateAction: true),
-        ],
-      ),
+    return driversAsync.when(
+      data: (allDrivers) {
+        final pending = allDrivers.where((d) => d.status == AccountStatus.pendingVerification).toList();
+        final approved = allDrivers.where((d) => d.status == AccountStatus.approved).toList();
+        final rejected = allDrivers.where((d) => d.status == AccountStatus.rejected).toList();
+        final suspended = allDrivers.where((d) => d.status == AccountStatus.suspended).toList();
+
+        return Scaffold(
+          backgroundColor: AppTheme.scaffoldBackground,
+          appBar: AppBar(
+            title: const Text('Driver Management'),
+            elevation: 0,
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: [
+                Tab(text: 'Pending (${pending.length})'),
+                Tab(text: 'Approved (${approved.length})'),
+                Tab(text: 'Rejected (${rejected.length})'),
+                Tab(text: 'Suspended (${suspended.length})'),
+              ],
+              isScrollable: true,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppTheme.primaryColor,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildDriverList(pending, showApprovalActions: true),
+              _buildDriverList(approved, showSuspendAction: true),
+              _buildDriverList(rejected),
+              _buildDriverList(suspended, showReactivateAction: true),
+            ],
+          ),
+        );
+      },
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, s) => Scaffold(body: Center(child: Text('Error: $e'))),
     );
   }
 
@@ -271,7 +279,7 @@ class _AdminDriverManagementScreenState
   }
 
   void _approveDriver(String driverId) {
-    ref.read(driverListProvider.notifier).approveDriver(driverId);
+    ref.read(firestoreServiceProvider).updateDriverStatus(driverId, AccountStatus.approved);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('✅ Driver approved successfully!'),
@@ -282,7 +290,7 @@ class _AdminDriverManagementScreenState
   }
 
   void _suspendDriver(String driverId) {
-    ref.read(driverListProvider.notifier).suspendDriver(driverId);
+    ref.read(firestoreServiceProvider).updateDriverStatus(driverId, AccountStatus.suspended);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Driver suspended.'),
@@ -321,7 +329,11 @@ class _AdminDriverManagementScreenState
           ),
           ElevatedButton(
             onPressed: () {
-              ref.read(driverListProvider.notifier).rejectDriver(driverId, remarksController.text);
+              ref.read(firestoreServiceProvider).updateDriverStatus(
+                driverId, 
+                AccountStatus.rejected,
+                adminRemarks: remarksController.text,
+              );
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
