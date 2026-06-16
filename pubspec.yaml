@@ -58,6 +58,12 @@ dependencies:
   google_sign_in_all_platforms: ^2.0.3
   crypto: ^3.0.3
 
+dependency_overrides:
+  # path_provider_android 2.3.x introduced a JNI (Java Native Interface)
+  # dependency that requires JDK to compile on Windows. The admin desktop
+  # app does not need Android path_provider; pin to <2.3.0 to avoid it.
+  path_provider_android: ">=2.0.0 <2.3.0"
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
