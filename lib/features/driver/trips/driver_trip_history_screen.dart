@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/mock_data.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
 

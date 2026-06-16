@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/firestore_service.dart';
 import '../core/desktop_theme.dart';
 
 // ─── Navigation Sections ──────────────────────────────────────────────────────
@@ -21,110 +22,160 @@ enum AdminSection {
 extension AdminSectionExt on AdminSection {
   String get label {
     switch (this) {
-      case AdminSection.dashboard: return 'Dashboard';
-      case AdminSection.drivers: return 'Drivers';
-      case AdminSection.agencies: return 'Travel Agencies';
-      case AdminSection.vehicles: return 'Vehicles';
-      case AdminSection.bookings: return 'Bookings';
-      case AdminSection.payments: return 'Payments';
-      case AdminSection.customers: return 'Customers';
-      case AdminSection.reports: return 'Reports & Analytics';
-      case AdminSection.notifications: return 'Notifications';
-      case AdminSection.settings: return 'System Settings';
+      case AdminSection.dashboard:
+        return 'Dashboard';
+      case AdminSection.drivers:
+        return 'Drivers';
+      case AdminSection.agencies:
+        return 'Travel Agencies';
+      case AdminSection.vehicles:
+        return 'Vehicles';
+      case AdminSection.bookings:
+        return 'Bookings';
+      case AdminSection.payments:
+        return 'Payments';
+      case AdminSection.customers:
+        return 'Customers';
+      case AdminSection.reports:
+        return 'Reports & Analytics';
+      case AdminSection.notifications:
+        return 'Notifications';
+      case AdminSection.settings:
+        return 'System Settings';
     }
   }
 
   IconData get icon {
     switch (this) {
-      case AdminSection.dashboard: return Icons.dashboard_rounded;
-      case AdminSection.drivers: return Icons.person_pin_rounded;
-      case AdminSection.agencies: return Icons.business_rounded;
-      case AdminSection.vehicles: return Icons.directions_car_rounded;
-      case AdminSection.bookings: return Icons.book_online_rounded;
-      case AdminSection.payments: return Icons.payments_rounded;
-      case AdminSection.customers: return Icons.people_rounded;
-      case AdminSection.reports: return Icons.bar_chart_rounded;
-      case AdminSection.notifications: return Icons.notifications_rounded;
-      case AdminSection.settings: return Icons.settings_rounded;
+      case AdminSection.dashboard:
+        return Icons.dashboard_rounded;
+      case AdminSection.drivers:
+        return Icons.person_pin_rounded;
+      case AdminSection.agencies:
+        return Icons.business_rounded;
+      case AdminSection.vehicles:
+        return Icons.directions_car_rounded;
+      case AdminSection.bookings:
+        return Icons.book_online_rounded;
+      case AdminSection.payments:
+        return Icons.payments_rounded;
+      case AdminSection.customers:
+        return Icons.people_rounded;
+      case AdminSection.reports:
+        return Icons.bar_chart_rounded;
+      case AdminSection.notifications:
+        return Icons.notifications_rounded;
+      case AdminSection.settings:
+        return Icons.settings_rounded;
     }
   }
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-final desktopNavProvider = StateProvider<AdminSection>((ref) => AdminSection.dashboard);
+final desktopNavProvider = StateProvider<AdminSection>(
+  (ref) => AdminSection.dashboard,
+);
 final sidebarCollapsedProvider = StateProvider<bool>((ref) => false);
 
 // ─── Theme Mode Provider ───────────────────────────────────────────────────────
-final desktopThemeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.light);
+final desktopThemeModeProvider = StateProvider<ThemeMode>(
+  (ref) => ThemeMode.light,
+);
 
 // ─── Admin Login Provider ──────────────────────────────────────────────────────
 
 class AdminLoginState {
   final bool isLoggedIn;
   final bool isLoading;
+  // null = still checking Firestore; false = login mode; true = creation mode
+  final bool? isCreationMode;
   final String? error;
-  final String adminName;
   final String adminEmail;
 
   const AdminLoginState({
     this.isLoggedIn = false,
     this.isLoading = false,
+    this.isCreationMode,
     this.error,
-    this.adminName = 'Nova Admin',
-    this.adminEmail = 'admin@novacabs.com',
+    this.adminEmail = '',
   });
 
   AdminLoginState copyWith({
     bool? isLoggedIn,
     bool? isLoading,
+    bool? isCreationMode,
     String? error,
-    String? adminName,
     String? adminEmail,
   }) {
     return AdminLoginState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isLoading: isLoading ?? this.isLoading,
+      isCreationMode: isCreationMode ?? this.isCreationMode,
       error: error,
-      adminName: adminName ?? this.adminName,
       adminEmail: adminEmail ?? this.adminEmail,
     );
   }
 }
 
 class AdminLoginNotifier extends StateNotifier<AdminLoginState> {
-  AdminLoginNotifier() : super(const AdminLoginState());
+  final FirestoreService _firestore;
+
+  AdminLoginNotifier(this._firestore) : super(const AdminLoginState()) {
+    _checkAdminExists();
+  }
+
+  Future<void> _checkAdminExists() async {
+    try {
+      final exists = await _firestore.checkSuperAdminExists();
+      state = state.copyWith(isCreationMode: !exists);
+    } catch (_) {
+      state = state.copyWith(isCreationMode: false);
+    }
+  }
 
   Future<bool> login(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final valid = await _firestore.verifySuperAdmin(email, password);
+      if (valid) {
+        state = state.copyWith(isLoggedIn: true, isLoading: false, adminEmail: email);
+        return true;
+      }
+      state = state.copyWith(isLoading: false, error: 'Invalid email or password.');
+      return false;
+    } catch (_) {
+      state = state.copyWith(isLoading: false, error: 'Unable to sign in. Please try again.');
+      return false;
+    }
+  }
 
-    // Demo credentials
-    if ((email == 'admin@novacabs.com' && password == 'admin123') ||
-        (email.isNotEmpty && password.length >= 6)) {
+  Future<bool> createAdmin(String email, String password) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _firestore.createSuperAdmin(email, password);
       state = state.copyWith(
         isLoggedIn: true,
         isLoading: false,
+        isCreationMode: false,
         adminEmail: email,
       );
       return true;
+    } catch (_) {
+      state = state.copyWith(isLoading: false, error: 'Failed to create admin account. Check Firestore setup.');
+      return false;
     }
-
-    state = state.copyWith(
-      isLoading: false,
-      error: 'Invalid credentials. Use admin@novacabs.com / admin123',
-    );
-    return false;
   }
 
   void logout() {
-    state = const AdminLoginState();
+    state = const AdminLoginState(isCreationMode: false);
   }
 }
 
-final adminLoginProvider = StateNotifierProvider<AdminLoginNotifier, AdminLoginState>(
-  (ref) => AdminLoginNotifier(),
-);
+final adminLoginProvider =
+    StateNotifierProvider<AdminLoginNotifier, AdminLoginState>(
+      (ref) => AdminLoginNotifier(ref.watch(firestoreServiceProvider)),
+    );
 
 // ─── Stat Card Widget ─────────────────────────────────────────────────────────
 
@@ -178,9 +229,14 @@ class DesktopStatCard extends StatelessWidget {
                 ),
                 if (trend != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: (trendUp ? DesktopTheme.success : DesktopTheme.danger).withValues(alpha: 0.1),
+                      color:
+                          (trendUp ? DesktopTheme.success : DesktopTheme.danger)
+                              .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -188,7 +244,9 @@ class DesktopStatCard extends StatelessWidget {
                         Icon(
                           trendUp ? Icons.trending_up : Icons.trending_down,
                           size: 14,
-                          color: trendUp ? DesktopTheme.success : DesktopTheme.danger,
+                          color: trendUp
+                              ? DesktopTheme.success
+                              : DesktopTheme.danger,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -196,7 +254,9 @@ class DesktopStatCard extends StatelessWidget {
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: trendUp ? DesktopTheme.success : DesktopTheme.danger,
+                            color: trendUp
+                                ? DesktopTheme.success
+                                : DesktopTheme.danger,
                           ),
                         ),
                       ],
@@ -266,7 +326,7 @@ class StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -318,7 +378,10 @@ class SectionHeader extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle!,
-                style: const TextStyle(fontSize: 13, color: DesktopTheme.textSecondary),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: DesktopTheme.textSecondary,
+                ),
               ),
             ],
           ],
@@ -353,9 +416,19 @@ class DesktopSearchBar extends StatelessWidget {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(fontSize: 13, color: DesktopTheme.textMuted),
-          prefixIcon: const Icon(Icons.search, size: 16, color: DesktopTheme.textMuted),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+          hintStyle: const TextStyle(
+            fontSize: 13,
+            color: DesktopTheme.textMuted,
+          ),
+          prefixIcon: const Icon(
+            Icons.search,
+            size: 16,
+            color: DesktopTheme.textMuted,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 12,
+          ),
           filled: true,
           fillColor: DesktopTheme.cardBg,
           border: OutlineInputBorder(
@@ -368,7 +441,10 @@ class DesktopSearchBar extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: DesktopTheme.primaryBlue, width: 1.5),
+            borderSide: const BorderSide(
+              color: DesktopTheme.primaryBlue,
+              width: 1.5,
+            ),
           ),
         ),
       ),
@@ -414,27 +490,22 @@ class PrimaryButton extends StatelessWidget {
     }
 
     return SizedBox(
-  width: 160, // set button width
-  child: ElevatedButton.icon(
-    onPressed: onPressed,
-    icon: icon != null
-        ? Icon(icon, size: 16, color: Colors.white)
-        : const SizedBox.shrink(),
-    label: Text(label, style: const TextStyle(color: Colors.white)),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: btnColor,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+      width: 160, // set button width
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: icon != null
+            ? Icon(icon, size: 16, color: Colors.white)
+            : const SizedBox.shrink(),
+        label: Text(label, style: const TextStyle(color: Colors.white)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: btnColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      textStyle: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 13,
-      ),
-    ),
-  ),
-);
+    );
   }
 }

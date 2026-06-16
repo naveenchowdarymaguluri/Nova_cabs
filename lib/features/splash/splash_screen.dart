@@ -1,8 +1,14 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../../core/app_theme.dart';
-import '../role_selection/role_selection_screen.dart';
-import '../admin/auth/admin_login_screen.dart';
 import 'package:flutter/foundation.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/app_theme.dart';
+import '../../core/app_router.dart';
+import '../../core/firestore_service.dart';
+import '../customer/home/home_screen.dart';
+import '../driver/dashboard/driver_dashboard.dart';
+import '../agency/dashboard/agency_dashboard.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -33,32 +39,42 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _logoScale = CurvedAnimation(parent: _logoController, curve: Curves.elasticOut)
-        .drive(Tween(begin: 0.0, end: 1.0));
-    _logoOpacity = CurvedAnimation(parent: _logoController, curve: Curves.easeIn)
-        .drive(Tween(begin: 0.0, end: 1.0));
+    _logoScale = CurvedAnimation(
+      parent: _logoController,
+      curve: Curves.elasticOut,
+    ).drive(Tween(begin: 0.0, end: 1.0));
+    _logoOpacity = CurvedAnimation(
+      parent: _logoController,
+      curve: Curves.easeIn,
+    ).drive(Tween(begin: 0.0, end: 1.0));
 
     // Streak animation
     _streakController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _streakWidth = CurvedAnimation(parent: _streakController, curve: Curves.easeOut)
-        .drive(Tween(begin: 0.0, end: 1.0));
+    _streakWidth = CurvedAnimation(
+      parent: _streakController,
+      curve: Curves.easeOut,
+    ).drive(Tween(begin: 0.0, end: 1.0));
 
     // Text animation
     _textController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    _textOpacity = CurvedAnimation(parent: _textController, curve: Curves.easeIn)
-        .drive(Tween(begin: 0.0, end: 1.0));
+    _textOpacity = CurvedAnimation(
+      parent: _textController,
+      curve: Curves.easeIn,
+    ).drive(Tween(begin: 0.0, end: 1.0));
     _taglineOpacity = CurvedAnimation(
       parent: _textController,
       curve: const Interval(0.4, 1.0, curve: Curves.easeIn),
     ).drive(Tween(begin: 0.0, end: 1.0));
-    _textSlide = CurvedAnimation(parent: _textController, curve: Curves.easeOut)
-        .drive(Tween(begin: const Offset(0, 0.3), end: Offset.zero));
+    _textSlide = CurvedAnimation(
+      parent: _textController,
+      curve: Curves.easeOut,
+    ).drive(Tween(begin: const Offset(0, 0.3), end: Offset.zero));
 
     // Sequence: logo → streak → text → navigate
     _logoController.forward().then((_) {
@@ -70,28 +86,65 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  void _navigate() {
+  Future<void> _navigate() async {
+    if (!mounted) return;
+
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+
+    // Desktop always goes to admin login via GoRouter
+    if (!isMobile) {
+      GoRouter.of(context).goNamed(AppRoutes.adminLogin);
+      return;
+    }
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    // No session → show customer home as guest
+    if (currentUser == null) {
+      _pushTo(const CustomerHomeScreen());
+      return;
+    }
+
+    // ── Session exists — resolve role ───────────────────────────────────────
+
+    // 1. Admin claim (fastest — no Firestore read)
+    try {
+      final claims = (await currentUser.getIdTokenResult()).claims;
+      if (claims?['admin'] == true) {
+        if (!mounted) return;
+        GoRouter.of(context).goNamed(AppRoutes.adminDashboard);
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Driver (look up by Firebase UID — drivers are stored with UID as doc ID)
+    final firestoreService = FirestoreService();
+    final driver = await firestoreService.getDriverById(currentUser.uid);
+    if (driver != null) {
+      _pushTo(DriverDashboard(driver: driver));
+      return;
+    }
+
+    // 3. Agency (same — UID as doc ID)
+    final agency = await firestoreService.getAgencyById(currentUser.uid);
+    if (agency != null) {
+      _pushTo(AgencyDashboard(agency: agency));
+      return;
+    }
+
+    // 4. Customer or unrecognised → customer home
+    _pushTo(const CustomerHomeScreen());
+  }
+
+  void _pushTo(Widget screen) {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 600),
-        pageBuilder: (_, __, ___) {
-          final isMobile = defaultTargetPlatform == TargetPlatform.android || 
-                          defaultTargetPlatform == TargetPlatform.iOS;
-          return isMobile ? const RoleSelectionScreen() : const AdminLoginScreen();
-        },
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.05),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
-              child: child,
-            ),
-          );
-        },
+        pageBuilder: (_, __, ___) => screen,
+        transitionDuration: const Duration(milliseconds: 400),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
       ),
     );
   }
@@ -181,7 +234,9 @@ class _SplashScreenState extends State<SplashScreen>
                                 offset: const Offset(0, 12),
                               ),
                               BoxShadow(
-                                color: AppTheme.accentColor.withValues(alpha: 0.3),
+                                color: AppTheme.accentColor.withValues(
+                                  alpha: 0.3,
+                                ),
                                 blurRadius: 40,
                                 spreadRadius: 5,
                               ),
@@ -213,7 +268,11 @@ class _SplashScreenState extends State<SplashScreen>
                           height: 3,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Colors.transparent, AppTheme.accentColor, Colors.transparent],
+                              colors: [
+                                Colors.transparent,
+                                AppTheme.accentColor,
+                                Colors.transparent,
+                              ],
                             ),
                             borderRadius: BorderRadius.circular(2),
                           ),

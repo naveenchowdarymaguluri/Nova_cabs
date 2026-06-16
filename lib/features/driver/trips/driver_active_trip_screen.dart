@@ -5,11 +5,17 @@ import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/firestore_service.dart';
+import '../../../widgets/map_view.dart';
 
 class DriverActiveTripScreen extends ConsumerStatefulWidget {
   final TripRequest trip;
+  final DriverModel driver;
 
-  const DriverActiveTripScreen({super.key, required this.trip});
+  const DriverActiveTripScreen({
+    super.key,
+    required this.trip,
+    required this.driver,
+  });
 
   @override
   ConsumerState<DriverActiveTripScreen> createState() => _DriverActiveTripScreenState();
@@ -22,6 +28,9 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
   double _distanceCovered = 0.0;
   double _finalFare = 0.0;
   Timer? _tripTimer;
+
+  /// Price per KM from driver's own pricing setup, falling back to ₹15
+  double get _pricePerKm => widget.driver.pricing?.pricePerKm ?? 15.0;
 
   @override
   void dispose() {
@@ -40,11 +49,11 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
     setState(() {
       _isTripStarted = true;
     });
-    
-    // Simulate active ride tracking
+
+    // Simulate distance accumulation (0.5 km every 2 s in debug)
     _tripTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       setState(() {
-        _distanceCovered += 0.5; // add 0.5 km every 2 secs for simulation
+        _distanceCovered += 0.5;
       });
     });
   }
@@ -53,17 +62,18 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
     _tripTimer?.cancel();
     setState(() {
       _isTripEnded = true;
-      // Calculate final fare: booking charge + distance * price_per_km
-      _finalFare = widget.trip.estimatedFare + (_distanceCovered * 15); // mock 15 per km
+      // Base fare + per-km charge using driver's configured price
+      final baseFare = widget.driver.pricing?.baseFare ?? 100.0;
+      _finalFare = baseFare + (_distanceCovered * _pricePerKm);
     });
   }
 
   Future<void> _sendPaymentRequest() async {
-    // Update booking in global state for earnings/history (Legacy)
     ref.read(bookingProvider.notifier).updateStatus(widget.trip.id, BookingStatus.tripCompleted);
-    
-    // Update the real Firestore TripRequest so the Customer gets syncing via Streams
-    await ref.read(firestoreServiceProvider).completeTripFromDriver(widget.trip.id, _distanceCovered, _finalFare);
+
+    await ref
+        .read(firestoreServiceProvider)
+        .completeTripFromDriver(widget.trip.id, _distanceCovered, _finalFare);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -85,23 +95,12 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
       ),
       body: Column(
         children: [
-          // Mock Map Area
-          Container(
+          // Live Map — shows driver's current GPS location
+          SizedBox(
             height: 250,
-            width: double.infinity,
-            color: Colors.grey.shade300,
-            child: const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.map, size: 60, color: Colors.grey),
-                  SizedBox(height: 10),
-                  Text('Map View', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
+            child: MapView(key: const ValueKey('active_trip_map')),
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -159,6 +158,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
   }
 
   Widget _buildActiveRideView() {
+    final estimatedFare = (widget.driver.pricing?.baseFare ?? 100.0) + (_distanceCovered * _pricePerKm);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -178,7 +178,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
             Column(
               children: [
                 const Text('Est. Fare', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                Text('₹${(widget.trip.estimatedFare + (_distanceCovered*15)).toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                Text('₹${estimatedFare.toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
               ],
             ),
           ],
@@ -218,6 +218,8 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
             children: [
               _buildSummaryRow('Total Distance', '${_distanceCovered.toStringAsFixed(1)} KM'),
               const Divider(height: 24),
+              _buildSummaryRow('Rate / KM', '₹${_pricePerKm.toStringAsFixed(0)}'),
+              const Divider(height: 24),
               _buildSummaryRow('Final Fare', '₹${_finalFare.toStringAsFixed(0)}', isBold: true),
             ],
           ),
@@ -244,7 +246,14 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
-        Text(value, style: TextStyle(fontSize: isBold ? 20 : 16, fontWeight: isBold ? FontWeight.bold : FontWeight.w500, color: isBold ? AppTheme.primaryColor : Colors.black87)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isBold ? 20 : 16,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+            color: isBold ? AppTheme.primaryColor : Colors.black87,
+          ),
+        ),
       ],
     );
   }

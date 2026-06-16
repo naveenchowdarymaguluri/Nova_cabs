@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
+import '../../../core/app_providers.dart';
 
-class ReportsAnalyticsScreen extends StatefulWidget {
+class ReportsAnalyticsScreen extends ConsumerStatefulWidget {
   const ReportsAnalyticsScreen({super.key});
 
   @override
-  State<ReportsAnalyticsScreen> createState() => _ReportsAnalyticsScreenState();
+  ConsumerState<ReportsAnalyticsScreen> createState() => _ReportsAnalyticsScreenState();
 }
 
-class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen>
+class _ReportsAnalyticsScreenState extends ConsumerState<ReportsAnalyticsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _selectedPeriod = 'Monthly';
@@ -400,44 +401,50 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen>
         children: [
           const Text('Cab Utilization', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 16),
-          ...MockData.cabs.map((cab) {
-            final utilization = (cab.rating / 5 * 100).toInt();
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(cab.model, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('$utilization% utilized',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text('${cab.type} • ${cab.agencyName}',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: utilization / 100,
-                    backgroundColor: Colors.grey.shade100,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      utilization > 80 ? Colors.green : utilization > 50 ? Colors.orange : Colors.red,
+          ...ref.watch(firestoreAllDriversProvider).maybeWhen(
+            data: (drivers) => drivers.map((driver) {
+              final utilization = driver.totalTrips > 0
+                  ? ((driver.rating / 5) * 100).clamp(0, 100).toInt()
+                  : 0;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(driver.vehicleModel.isNotEmpty ? driver.vehicleModel : driver.vehicleNumber,
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('$utilization% utilized',
+                            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ],
                     ),
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ],
-              ),
-            );
-          }),
+                    const SizedBox(height: 4),
+                    Text('${driver.vehicleType} • ${driver.agencyName ?? 'Individual'}',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: utilization / 100,
+                      backgroundColor: Colors.grey.shade100,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        utilization > 80 ? Colors.green : utilization > 50 ? Colors.orange : Colors.red,
+                      ),
+                      minHeight: 8,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            orElse: () => [],
+          ),
         ],
       ),
     );
@@ -451,7 +458,13 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen>
         children: [
           const Text('Top Customers', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 16),
-          ...MockData.customers.map((customer) {
+          ...ref.watch(firestoreAllCustomersProvider).maybeWhen(
+            data: (customers) => customers
+                .where((c) => c.totalBookings > 0)
+                .toList()
+              ..sort((a, b) => b.totalSpent.compareTo(a.totalSpent)),
+            orElse: () => [],
+          ).map((customer) {
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),

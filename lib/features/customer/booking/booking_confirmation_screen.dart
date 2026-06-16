@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
-import 'payment_screen.dart';
+import 'driver_request_screen.dart';
 
 class BookingConfirmationScreen extends StatelessWidget {
   final DriverModel driver;
@@ -57,9 +57,9 @@ class BookingConfirmationScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.03),
+        color: AppTheme.primaryColor.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1)),
+        border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
@@ -181,7 +181,7 @@ class BookingConfirmationScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.3),
+            color: AppTheme.primaryColor.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -220,7 +220,7 @@ class BookingConfirmationScreen extends StatelessWidget {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'A booking charge of ₹50 is required to confirm your trip. The remaining fare will be calculated based on the actual distance covered and is payable after the ride.',
+              'A small advance (₹20 for trips up to 20 KM, or ₹1 per KM beyond that) is required to confirm your trip. The remaining fare is payable after the ride.',
               style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ),
@@ -241,14 +241,13 @@ class BookingConfirmationScreen extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => PaymentScreen(
+                  builder: (_) => DriverRequestScreen(
                     driver: driver,
                     pickup: pickup,
                     drop: drop,
                     date: date,
                     distance: distance,
-                    totalFare: fare,
-                    paymentStage: 'Advance',
+                    fare: fare,
                     rentalPackage: rentalPackage,
                   ),
                 ),
@@ -258,7 +257,7 @@ class BookingConfirmationScreen extends StatelessWidget {
               backgroundColor: AppTheme.primaryColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            child: const Text('Confirm & Pay Booking Charge', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            child: const Text('Confirm Booking', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
           ),
         ),
       ),

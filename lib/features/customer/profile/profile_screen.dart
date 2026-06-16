@@ -4,6 +4,8 @@ import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
 import '../../role_selection/role_selection_screen.dart';
 import '../support/support_screen.dart';
+import 'edit_profile_screen.dart';
+import 'about_screen.dart';
 
 class CustomerProfileScreen extends ConsumerWidget {
   const CustomerProfileScreen({super.key});
@@ -75,7 +77,7 @@ class CustomerProfileScreen extends ConsumerWidget {
           ),
           Text(
             authState.userPhone ?? '',
-            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
           ),
         ],
       ),
@@ -87,13 +89,21 @@ class CustomerProfileScreen extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          _buildProfileTile(Icons.person_outline, 'Edit Profile', () {}),
-          _buildProfileTile(Icons.payment, 'Payment Methods', () {}),
-          _buildProfileTile(Icons.home_outlined, 'Saved Addresses', () {}),
+          _buildProfileTile(Icons.person_outline, 'Edit Profile', () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen()));
+          }),
+          _buildProfileTile(Icons.payment, 'Payment Methods', () {
+            _showPaymentMethodsSheet(context);
+          }),
+          _buildProfileTile(Icons.home_outlined, 'Saved Addresses', () {
+            _showSavedAddressesSheet(context);
+          }),
           _buildProfileTile(Icons.help_outline, 'Support & Help', () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportScreen()));
           }),
-          _buildProfileTile(Icons.info_outline, 'About Nova Cabs', () {}),
+          _buildProfileTile(Icons.info_outline, 'About Nova Cabs', () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+          }),
           const Divider(height: 32),
           _buildProfileTile(
             Icons.logout, 
@@ -112,7 +122,7 @@ class CustomerProfileScreen extends ConsumerWidget {
       leading: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isDestructive ? Colors.red.withOpacity(0.1) : Colors.grey.shade100,
+          color: isDestructive ? Colors.red.withValues(alpha: 0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: isDestructive ? Colors.red : AppTheme.primaryColor, size: 22),
@@ -136,6 +146,70 @@ class CustomerProfileScreen extends ConsumerWidget {
         const Text('Nova Cabs Customer', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
         Text('Version 1.0.4 (Production)', style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
       ],
+    );
+  }
+
+  void _showPaymentMethodsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Payment Methods', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.account_balance_wallet_outlined, size: 56, color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
+                  const Text('No saved payment methods', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('UPI and card support coming soon', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSavedAddressesSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Saved Addresses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.home_outlined, size: 56, color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
+                  const Text('No saved addresses yet', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('Save your home and work locations for quick booking', style: TextStyle(color: Colors.grey.shade500, fontSize: 13), textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
     );
   }
 

@@ -4,8 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/mock_data.dart';
-import '../../../core/models.dart';
+import '../../../core/firestore_service.dart';
 import '../../role_selection/role_selection_screen.dart';
 import '../pricing/driver_pricing_screen.dart';
 import '../trips/driver_trip_history_screen.dart';
@@ -162,7 +161,35 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
           ),
           actions: [
             IconButton(
-              onPressed: () {},
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (_) => Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey.shade300),
+                              const SizedBox(height: 12),
+                              Text('No new notifications', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                );
+              },
               icon: Stack(
                 children: [
                   const Icon(Icons.notifications_outlined, color: AppTheme.primaryColor),
@@ -914,7 +941,7 @@ class _DriverDashboardState extends ConsumerState<DriverDashboard>
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => DriverActiveTripScreen(trip: updatedTrip),
+                          builder: (_) => DriverActiveTripScreen(trip: updatedTrip, driver: widget.driver),
                         ),
                       );
                     },

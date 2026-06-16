@@ -82,7 +82,7 @@ class DesktopSidebar extends ConsumerWidget {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: DesktopTheme.primaryBlue.withOpacity(0.3),
+                  color: DesktopTheme.primaryBlue.withValues(alpha: 0.3),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -108,7 +108,7 @@ class DesktopSidebar extends ConsumerWidget {
                 Text(
                   'ADMIN PORTAL',
                   style: TextStyle(
-                    color: DesktopTheme.primaryBlue.withOpacity(0.8),
+                    color: DesktopTheme.primaryBlue.withValues(alpha: 0.8),
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
@@ -155,7 +155,7 @@ class DesktopSidebar extends ConsumerWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: isActive ? [
               BoxShadow(
-                color: DesktopTheme.primaryBlue.withOpacity(0.2),
+                color: DesktopTheme.primaryBlue.withValues(alpha: 0.2),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               )
@@ -193,15 +193,15 @@ class DesktopSidebar extends ConsumerWidget {
     return Container(
       padding: EdgeInsets.all(isCollapsed ? 12 : 20),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+        color: Colors.black.withValues(alpha: 0.2),
+        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
       ),
       child: Row(
         mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: DesktopTheme.primaryBlue.withOpacity(0.2),
+            backgroundColor: DesktopTheme.primaryBlue.withValues(alpha: 0.2),
             child: const Icon(Icons.person, color: Colors.white, size: 20),
           ),
           if (!isCollapsed) ...[

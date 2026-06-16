@@ -50,7 +50,7 @@ class _SearchSectionState extends State<SearchSection> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -102,16 +102,14 @@ class _SearchSectionState extends State<SearchSection> {
                     builder: (_) => LocationPickerScreen(
                       title: 'Drop Location',
                       hint: 'Where are you going?',
+                      restrictToCity: false,
                     ),
                   ),
                 );
                 if (result != null) widget.onDropChanged(result);
               },
             ),
-          if (widget.selectedTab == 'Outstation') ...[
-            const SizedBox(height: 16),
-            _buildOutstationWaySelector(),
-          ],
+
           const SizedBox(height: 20),
           Row(
             children: [
@@ -151,9 +149,9 @@ class _SearchSectionState extends State<SearchSection> {
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: Text(
-                'Search ${widget.selectedTab ?? "Cabs"}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: const Text(
+                'Start Booking',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -345,56 +343,5 @@ class _SearchSectionState extends State<SearchSection> {
     );
   }
 
-  String _outstationWay = 'One-way';
-  Widget _buildOutstationWaySelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Trip Type',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _wayChip('One-way', Icons.arrow_forward),
-            const SizedBox(width: 12),
-            _wayChip('Round-trip', Icons.compare_arrows),
-          ],
-        ),
-      ],
-    );
-  }
 
-  Widget _wayChip(String label, IconData icon) {
-    bool isSelected = _outstationWay == label;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _outstationWay = label),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade300),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.grey),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

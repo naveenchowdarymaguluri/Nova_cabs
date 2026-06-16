@@ -154,9 +154,13 @@ class DriverPricing {
   final double driverAllowance;
   final String tollPolicy; // Included / Extra / Not Applicable
 
+  // Platform-wide minimums — drivers cannot undercut these
+  static const double kMinBaseFare = 1.0;
+  static const double kMinPricePerKm = 5.0;
+
   const DriverPricing({
-    this.baseFare = 100.0,
-    this.pricePerKm = 12.0,
+    this.baseFare = 1.0,
+    this.pricePerKm = 5.0,
     this.pricePerHour = 200.0,
     this.waitingCharges = 2.0,
     this.nightCharges = 150.0,
@@ -165,8 +169,14 @@ class DriverPricing {
     this.tollPolicy = 'Extra',
   });
 
+  /// Effective values after applying platform minimums
+  double get effectiveBaseFare =>
+      baseFare < kMinBaseFare ? kMinBaseFare : baseFare;
+  double get effectivePricePerKm =>
+      pricePerKm < kMinPricePerKm ? kMinPricePerKm : pricePerKm;
+
   double estimateFare(double distanceKm) {
-    return baseFare + (distanceKm * pricePerKm);
+    return effectiveBaseFare + (distanceKm * effectivePricePerKm);
   }
 
   double calculateFinalFare({
@@ -175,7 +185,7 @@ class DriverPricing {
     bool isNightTrip = false,
     double tollCharges = 0,
   }) {
-    double fare = baseFare + (actualDistanceKm * pricePerKm);
+    double fare = effectiveBaseFare + (actualDistanceKm * effectivePricePerKm);
     fare += waitingMinutes * waitingCharges;
     if (isNightTrip) fare += nightCharges;
     if (tollPolicy == 'Extra') fare += tollCharges;

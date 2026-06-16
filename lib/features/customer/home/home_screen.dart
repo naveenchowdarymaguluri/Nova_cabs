@@ -6,6 +6,7 @@ import '../../../core/extended_models.dart';
 import '../search/cab_listing_screen.dart';
 import '../../admin/dashboard/admin_dashboard.dart';
 import '../auth/login_screen.dart';
+import '../../auth/unified_login_screen.dart';
 import '../offers/all_offers_screen.dart';
 import '../bookings/my_bookings_screen.dart';
 import '../support/support_screen.dart';
@@ -118,7 +119,12 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
               title: const Text('Login / Sign Up'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerLoginScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const UnifiedLoginScreen(),
+                  ),
+                );
               },
             ),
         ],
@@ -247,7 +253,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(icon, color: color, size: 28),
@@ -268,7 +274,10 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Recent Searches', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextButton(onPressed: () {}, child: const Text('Clear')),
+              TextButton(
+                onPressed: () => setState(() => _recentSearches.clear()),
+                child: const Text('Clear'),
+              ),
             ],
           ),
           ..._recentSearches.map((search) => ListTile(
@@ -332,7 +341,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'Book hotels along with your cab ride.',
-                        style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 12),
                       ),
                     ],
                   ),
@@ -365,7 +374,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 14, offset: const Offset(0, 4)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 14, offset: const Offset(0, 4)),
                 ],
               ),
               child: Column(
@@ -377,7 +386,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.08),
+                          color: AppTheme.primaryColor.withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.notifications_active, color: AppTheme.primaryColor, size: 32),
@@ -468,9 +477,9 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.04),
+                color: AppTheme.primaryColor.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.12)),
+                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.12)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,7 +508,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
         ],
       ),
       child: Row(
@@ -507,7 +516,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 22),
@@ -622,7 +631,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: AppTheme.primaryColor.withOpacity(0.12),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.12),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -657,7 +666,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentColor.withOpacity(0.9),
+                          color: AppTheme.accentColor.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
@@ -680,52 +689,6 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
     );
   }
 
-  Widget _buildRecentSearches() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text('Recent Searches', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        ),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: MockData.recentSearches.length,
-            itemBuilder: (context, index) {
-              return Container(
-                width: 200,
-                margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.history, color: Colors.grey, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        MockData.recentSearches[index],
-                        style: const TextStyle(fontSize: 14),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildOffersSection() {
     final offersAsync = ref.watch(firestoreOffersProvider);
 
@@ -738,7 +701,10 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Best Offers For You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextButton(onPressed: () {}, child: const Text('View All')),
+              TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AllOffersScreen())),
+                child: const Text('View All'),
+              ),
             ],
           ),
         ),
@@ -784,7 +750,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
           const SizedBox(height: 12),
           Text(
             'Choosing the right cab service is not just about getting from one place to another — it’s about comfort, reliability, safety, and peace of mind. At Nova Cabs, we understand the importance of every journey.',
-            style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14, height: 1.5),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14, height: 1.5),
           ),
         ],
       ),
@@ -827,7 +793,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: AppTheme.accentColor.withOpacity(0.2), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: AppTheme.accentColor.withValues(alpha: 0.2), shape: BoxShape.circle),
             child: Icon(icon, color: AppTheme.primaryColor, size: 24),
           ),
           const SizedBox(width: 16),
@@ -891,6 +857,34 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
   }
 
   void _handleSearch() {
+    final authState = ref.read(authProvider);
+    if (!authState.isLoggedIn) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Login Required'),
+          content: const Text('Please login to search and book a cab.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
+                );
+              },
+              child: const Text('Login'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final isRental = _selectedTab == 'Rental Cabs';
     if (_pickupLocation.isEmpty || (!isRental && _dropLocation.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(

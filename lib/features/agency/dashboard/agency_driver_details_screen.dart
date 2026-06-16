@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/app_theme.dart';
+import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
-import '../../../core/mock_data.dart';
 import '../../../core/models.dart';
 
 class AgencyDriverDetailsScreen extends ConsumerWidget {
@@ -13,7 +13,8 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final driverBookings = MockData.bookings.where((b) => b.driverId == driver.id).toList();
+    final driverBookingsAsync = ref.watch(firestoreDriverTripsProvider(driver.id));
+    final driverBookings = driverBookingsAsync.maybeWhen(data: (b) => b, orElse: () => <TripRequest>[]);
 
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
@@ -152,7 +153,10 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _buildSectionTitle('Recent Assigned Trips'),
-                      TextButton(onPressed: () {}, child: const Text('View All')),
+                      TextButton(
+                    onPressed: () => _showAllTrips(context, driverBookings),
+                    child: const Text('View All'),
+                  ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -261,11 +265,17 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTripListItem(Booking b) {
-    final statusColor = {
-      'Completed': Colors.green, 'Ongoing': Colors.blue,
-      'Confirmed': Colors.teal, 'Cancelled': Colors.red, 'New': Colors.orange,
-    }[b.status] ?? Colors.grey;
+  Widget _buildTripListItem(TripRequest b) {
+    final statusColorMap = {
+      BookingStatus.tripCompleted: Colors.green,
+      BookingStatus.paymentCompleted: Colors.green,
+      BookingStatus.tripStarted: Colors.blue,
+      BookingStatus.driverAccepted: Colors.teal,
+      BookingStatus.cancelled: Colors.red,
+      BookingStatus.booked: Colors.orange,
+    };
+    final statusColor = statusColorMap[b.status] ?? Colors.grey;
+    final fare = b.finalFare ?? b.estimatedFare;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -287,7 +297,7 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('#${b.id}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('#${b.bookingId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 Text('${b.pickupLocation} → ${b.dropLocation}', style: TextStyle(color: Colors.grey.shade500, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
@@ -295,11 +305,11 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('₹${b.totalFare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+              Text('₹${fare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                child: Text(b.status, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                child: Text(b.status.name.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -326,4 +336,111 @@ class AgencyDriverDetailsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+void _showAllTrips(BuildContext context, List<TripRequest> trips) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.65,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      builder: (_, controller) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                const Text('All Assigned Trips', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Text('${trips.length} trips', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: trips.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history_toggle_off, size: 48, color: Colors.grey.shade300),
+                        const SizedBox(height: 12),
+                        Text('No trips found', style: TextStyle(color: Colors.grey.shade500)),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    controller: controller,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: trips.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) {
+                      final b = trips[i];
+                      final statusColorMap = {
+                        BookingStatus.tripCompleted: Colors.green,
+                        BookingStatus.paymentCompleted: Colors.green,
+                        BookingStatus.tripStarted: Colors.blue,
+                        BookingStatus.driverAccepted: Colors.teal,
+                        BookingStatus.cancelled: Colors.red,
+                        BookingStatus.booked: Colors.orange,
+                      };
+                      final statusColor = statusColorMap[b.status] ?? Colors.grey;
+                      final fare = b.finalFare ?? b.estimatedFare;
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(Icons.map, color: Color(0xFFE65100), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('#${b.bookingId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  Text(
+                                    '${b.pickupLocation} → ${b.dropLocation}',
+                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('₹${fare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                                  child: Text(b.status.name.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

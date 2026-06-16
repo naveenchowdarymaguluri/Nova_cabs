@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/mock_data.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
 class DriverEarningsScreen extends ConsumerWidget {
   final String driverId;
@@ -145,7 +145,6 @@ class DriverEarningsScreen extends ConsumerWidget {
                         ),
                       ),
 
-                      // 🔥 HARD CONSTRAINT FIX
                       ConstrainedBox(
                         constraints: const BoxConstraints(
                           minWidth: 120,
@@ -153,11 +152,9 @@ class DriverEarningsScreen extends ConsumerWidget {
                           minHeight: 45,
                         ),
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Withdrawal requested')),
-                            );
-                          },
+                          onPressed: netEarnings <= 0
+                              ? null
+                              : () => _showWithdrawalDialog(context, ref, netEarnings),
                           icon: const Icon(Icons.account_balance, size: 18, color: Colors.white),
                           label: const Text('Withdraw', style: TextStyle(color: Colors.white)),
                           style: ElevatedButton.styleFrom(
@@ -269,6 +266,74 @@ class DriverEarningsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showWithdrawalDialog(
+    BuildContext context,
+    WidgetRef ref,
+    double availableAmount,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Request Withdrawal'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('You are requesting a withdrawal of:'),
+            const SizedBox(height: 8),
+            Text(
+              '₹${availableAmount.toStringAsFixed(0)}',
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Amount will be transferred to your registered bank account within 1–2 business days.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await ref.read(firestoreServiceProvider).requestWithdrawal(
+        driverId: driverId,
+        amount: availableAmount,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Withdrawal request submitted! You\'ll receive it within 1–2 business days.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to request withdrawal: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildStatCard(

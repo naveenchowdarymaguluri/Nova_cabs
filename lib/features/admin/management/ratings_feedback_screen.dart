@@ -1,63 +1,65 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 import '../../../core/models.dart';
 
-class RatingsFeedbackScreen extends StatefulWidget {
+class RatingsFeedbackScreen extends ConsumerStatefulWidget {
   const RatingsFeedbackScreen({super.key});
 
   @override
-  State<RatingsFeedbackScreen> createState() => _RatingsFeedbackScreenState();
+  ConsumerState<RatingsFeedbackScreen> createState() => _RatingsFeedbackScreenState();
 }
 
-class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
-  List<CustomerFeedback> _feedbacks = List.from(MockData.feedbacks);
-  String _filterType = 'All'; // All, Flagged, High, Low
-
-  List<CustomerFeedback> get _filteredFeedbacks {
-    switch (_filterType) {
-      case 'Flagged':
-        return _feedbacks.where((f) => f.isFlagged).toList();
-      case 'High':
-        return _feedbacks.where((f) => f.rating >= 4).toList();
-      case 'Low':
-        return _feedbacks.where((f) => f.rating < 3).toList();
-      default:
-        return _feedbacks;
-    }
-  }
-
-  double get _averageRating {
-    if (_feedbacks.isEmpty) return 0;
-    return _feedbacks.fold(0.0, (sum, f) => sum + f.rating) / _feedbacks.length;
-  }
+class _RatingsFeedbackScreenState extends ConsumerState<RatingsFeedbackScreen> {
+  String _filterType = 'All';
 
   @override
   Widget build(BuildContext context) {
+    final feedbacksAsync = ref.watch(firestoreFeedbacksProvider);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ratings & Feedback'),
-      ),
-      body: Column(
-        children: [
-          _buildRatingSummary(),
-          _buildFilterRow(),
-          Expanded(
-            child: _filteredFeedbacks.isEmpty
-                ? const Center(child: Text('No feedback found'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredFeedbacks.length,
-                    itemBuilder: (context, index) =>
-                        _buildFeedbackCard(_filteredFeedbacks[index]),
-                  ),
-          ),
-        ],
+      appBar: AppBar(title: const Text('Ratings & Feedback')),
+      body: feedbacksAsync.when(
+        data: (feedbacks) {
+          final filtered = _applyFilter(feedbacks);
+          return Column(
+            children: [
+              _buildRatingSummary(feedbacks),
+              _buildFilterRow(),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(child: Text('No feedback found'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) => _buildFeedbackCard(filtered[index]),
+                      ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildRatingSummary() {
+  List<CustomerFeedback> _applyFilter(List<CustomerFeedback> feedbacks) {
+    switch (_filterType) {
+      case 'Flagged': return feedbacks.where((f) => f.isFlagged).toList();
+      case 'High': return feedbacks.where((f) => f.rating >= 4).toList();
+      case 'Low': return feedbacks.where((f) => f.rating < 3).toList();
+      default: return feedbacks;
+    }
+  }
+
+  Widget _buildRatingSummary(List<CustomerFeedback> feedbacks) {
+    final avg = feedbacks.isEmpty
+        ? 0.0
+        : feedbacks.fold(0.0, (sum, f) => sum + f.rating) / feedbacks.length;
+
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -79,10 +81,8 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    _averageRating.toStringAsFixed(1),
-                    style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
-                  ),
+                  Text(avg.toStringAsFixed(1),
+                      style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold)),
                   const Padding(
                     padding: EdgeInsets.only(bottom: 8, left: 4),
                     child: Text('/5.0', style: TextStyle(color: Colors.white60, fontSize: 16)),
@@ -90,53 +90,39 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
                 ],
               ),
               Row(
-                children: List.generate(5, (i) {
-                  return Icon(
-                    i < _averageRating.floor() ? Icons.star : Icons.star_border,
-                    color: AppTheme.accentColor,
-                    size: 18,
-                  );
-                }),
+                children: List.generate(5, (i) => Icon(
+                  i < avg.floor() ? Icons.star : Icons.star_border,
+                  color: AppTheme.accentColor,
+                  size: 18,
+                )),
               ),
             ],
           ),
           const Spacer(),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _buildRatingBar('5★', _feedbacks.where((f) => f.rating == 5).length),
-              _buildRatingBar('4★', _feedbacks.where((f) => f.rating >= 4 && f.rating < 5).length),
-              _buildRatingBar('3★', _feedbacks.where((f) => f.rating >= 3 && f.rating < 4).length),
-              _buildRatingBar('2★', _feedbacks.where((f) => f.rating >= 2 && f.rating < 3).length),
-              _buildRatingBar('1★', _feedbacks.where((f) => f.rating < 2).length),
-            ],
+            children: [5, 4, 3, 2, 1].map((star) {
+              final count = feedbacks.where((f) => f.rating.floor() == star).length;
+              return _buildRatingBar('$star★', count, feedbacks.length);
+            }).toList(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRatingBar(String label, int count) {
+  Widget _buildRatingBar(String label, int count, int total) {
     return Row(
       children: [
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
         const SizedBox(width: 6),
         Container(
-          width: 60,
-          height: 6,
-          decoration: BoxDecoration(
-            color: Colors.white24,
-            borderRadius: BorderRadius.circular(3),
-          ),
+          width: 60, height: 6,
+          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3)),
           child: FractionallySizedBox(
             alignment: Alignment.centerLeft,
-            widthFactor: _feedbacks.isEmpty ? 0 : count / _feedbacks.length,
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppTheme.accentColor,
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
+            widthFactor: total == 0 ? 0 : count / total,
+            child: Container(decoration: BoxDecoration(color: AppTheme.accentColor, borderRadius: BorderRadius.circular(3))),
           ),
         ),
         const SizedBox(width: 4),
@@ -170,6 +156,7 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
   }
 
   Widget _buildFeedbackCard(CustomerFeedback feedback) {
+    final fs = ref.read(firestoreServiceProvider);
     return Container(
       margin: const EdgeInsets.only(bottom: 12, top: 8),
       decoration: BoxDecoration(
@@ -189,7 +176,7 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
                   radius: 18,
                   backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
                   child: Text(
-                    feedback.customerName[0],
+                    feedback.customerName.isNotEmpty ? feedback.customerName[0] : '?',
                     style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -198,40 +185,29 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(feedback.customerName,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      Text(feedback.date,
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                      Text(feedback.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text(feedback.date, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
                     ],
                   ),
                 ),
                 if (feedback.isFlagged)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text('FLAGGED',
-                        style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
+                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('FLAGGED', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
                   ),
               ],
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                ...List.generate(5, (i) {
-                  return Icon(
-                    i < feedback.rating ? Icons.star : Icons.star_border,
-                    color: AppTheme.accentColor,
-                    size: 16,
-                  );
-                }),
+                ...List.generate(5, (i) => Icon(
+                  i < feedback.rating ? Icons.star : Icons.star_border,
+                  color: AppTheme.accentColor,
+                  size: 16,
+                )),
                 const SizedBox(width: 6),
-                Text(
-                  feedback.rating.toStringAsFixed(1),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
+                Text(feedback.rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 8),
@@ -239,51 +215,43 @@ class _RatingsFeedbackScreenState extends State<RatingsFeedbackScreen> {
               children: [
                 const Icon(Icons.directions_car, size: 13, color: Colors.grey),
                 const SizedBox(width: 4),
-                Text(
-                  '${feedback.cabModel} • ${feedback.agencyName}',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
+                Text('${feedback.cabModel} • ${feedback.agencyName}',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              feedback.comment,
-              style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4),
-            ),
+            Text(feedback.comment, style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4)),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() => feedback.isFlagged = !feedback.isFlagged);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(feedback.isFlagged ? 'Review flagged' : 'Flag removed'),
-                          backgroundColor: feedback.isFlagged ? Colors.orange : Colors.green,
-                        ),
-                      );
+                    onPressed: () async {
+                      await fs.updateFeedbackFlag(feedback.id, !feedback.isFlagged);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(feedback.isFlagged ? 'Flag removed' : 'Review flagged'),
+                          backgroundColor: feedback.isFlagged ? Colors.green : Colors.orange,
+                        ));
+                      }
                     },
-                    icon: Icon(
-                      feedback.isFlagged ? Icons.flag : Icons.flag_outlined,
-                      size: 16,
-                      color: feedback.isFlagged ? Colors.orange : Colors.grey,
-                    ),
-                    label: Text(
-                      feedback.isFlagged ? 'Unflag' : 'Flag',
-                      style: TextStyle(color: feedback.isFlagged ? Colors.orange : Colors.grey),
-                    ),
+                    icon: Icon(feedback.isFlagged ? Icons.flag : Icons.flag_outlined,
+                        size: 16, color: feedback.isFlagged ? Colors.orange : Colors.grey),
+                    label: Text(feedback.isFlagged ? 'Unflag' : 'Flag',
+                        style: TextStyle(color: feedback.isFlagged ? Colors.orange : Colors.grey)),
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() => _feedbacks.remove(feedback));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Review disabled'), backgroundColor: Colors.red),
-                      );
+                    onPressed: () async {
+                      await fs.deleteFeedback(feedback.id);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Review removed'), backgroundColor: Colors.red),
+                        );
+                      }
                     },
                     icon: const Icon(Icons.visibility_off, size: 16, color: Colors.red),
                     label: const Text('Disable', style: TextStyle(color: Colors.red)),

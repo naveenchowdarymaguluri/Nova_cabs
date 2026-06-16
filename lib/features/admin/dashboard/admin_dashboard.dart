@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/extended_models.dart';
 import '../management/manage_cabs_screen.dart';
 import '../management/travel_agency_screen.dart';
 import '../management/booking_management_screen.dart';
@@ -51,7 +51,10 @@ class AdminDashboard extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationManagementScreen()),
+            ),
             icon: Stack(
               children: [
                 const Icon(Icons.notifications_none),
@@ -238,7 +241,7 @@ class AdminDashboard extends ConsumerWidget {
 
     final totalBookings = bookingsAsync.maybeWhen(data: (list) => list.length, orElse: () => 0);
     final ongoingBookings = bookingsAsync.maybeWhen(
-      data: (list) => list.where((b) => b.status == BookingStatus.driverAccepted || b.status == BookingStatus.arrived).length,
+      data: (list) => list.where((b) => b.status == BookingStatus.driverAccepted || b.status == BookingStatus.driverArriving).length,
       orElse: () => 0,
     );
     final totalDrivers = driversAsync.maybeWhen(data: (list) => list.length, orElse: () => 0);
@@ -373,7 +376,7 @@ class AdminDashboard extends ConsumerWidget {
               final statusColors = {
                 BookingStatus.tripCompleted: Colors.green,
                 BookingStatus.driverAccepted: Colors.blue,
-                BookingStatus.arrived: Colors.teal,
+                BookingStatus.driverArriving: Colors.teal,
                 BookingStatus.cancelled: Colors.red,
                 BookingStatus.booked: Colors.orange,
                 BookingStatus.paymentCompleted: Colors.green,

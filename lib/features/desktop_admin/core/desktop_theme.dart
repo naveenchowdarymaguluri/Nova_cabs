@@ -49,12 +49,12 @@ class DesktopTheme {
   // Effects
   static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       offset: const Offset(0, 2),
       blurRadius: 4,
     ),
     BoxShadow(
-      color: Colors.black.withOpacity(0.04),
+      color: Colors.black.withValues(alpha: 0.04),
       offset: const Offset(0, 10),
       blurRadius: 15,
       spreadRadius: -3,
@@ -62,8 +62,8 @@ class DesktopTheme {
   ];
 
   static BoxDecoration get glassEffect => BoxDecoration(
-    color: Colors.white.withOpacity(0.7),
-    border: Border.all(color: Colors.white.withOpacity(0.2)),
+    color: Colors.white.withValues(alpha: 0.7),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
   );
 
   static Color statusColor(String status) {

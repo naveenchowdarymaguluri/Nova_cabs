@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/app_theme.dart';
 import '../customer/home/home_screen.dart';
-import '../customer/auth/login_screen.dart';
-import '../driver/auth/driver_login_screen.dart';
 import '../agency/auth/agency_login_screen.dart';
 import '../admin/auth/admin_login_screen.dart';
 

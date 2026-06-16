@@ -1,109 +1,132 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/desktop_theme.dart';
 import '../shared/desktop_widgets.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/extended_models.dart';
 
-class VehicleManagementDesktopScreen extends StatefulWidget {
+class VehicleManagementDesktopScreen extends ConsumerStatefulWidget {
   const VehicleManagementDesktopScreen({super.key});
 
   @override
-  State<VehicleManagementDesktopScreen> createState() => _VehicleManagementDesktopScreenState();
+  ConsumerState<VehicleManagementDesktopScreen> createState() => _VehicleManagementDesktopScreenState();
 }
 
-class _VehicleManagementDesktopScreenState extends State<VehicleManagementDesktopScreen> {
+class _VehicleManagementDesktopScreenState extends ConsumerState<VehicleManagementDesktopScreen> {
   String _search = '';
   String _filter = 'All';
 
-  final List<Map<String, dynamic>> _vehicles = [
-    {'id': 'V001', 'number': 'KA-01-MJ-1234', 'model': 'Toyota Camry', 'type': '4-Seater', 'owner': 'Quick Travels', 'ownerType': 'Agency', 'fuel': 'Petrol', 'status': 'Active', 'rc': 'RC123456', 'insurance': 'INS789012', 'year': 2022},
-    {'id': 'V002', 'number': 'KA-02-AB-5678', 'model': 'Toyota Innova', 'type': '7-Seater', 'owner': 'Elite Cabs', 'ownerType': 'Agency', 'fuel': 'Diesel', 'status': 'Active', 'rc': 'RC234567', 'insurance': 'INS890123', 'year': 2021},
-    {'id': 'V003', 'number': 'KA-03-CD-9012', 'model': 'Force Traveller', 'type': '13-Seater', 'owner': 'Global Travels', 'ownerType': 'Agency', 'fuel': 'Diesel', 'status': 'Under Verification', 'rc': 'RC345678', 'insurance': 'INS901234', 'year': 2020},
-    {'id': 'V004', 'number': 'KA-04-EF-3456', 'model': 'Honda City', 'type': '4-Seater', 'owner': 'Rajesh Kumar', 'ownerType': 'Individual', 'fuel': 'Petrol', 'status': 'Active', 'rc': 'RC456789', 'insurance': 'INS012345', 'year': 2023},
-    {'id': 'V005', 'number': 'KA-05-GH-7890', 'model': 'Maruti Ertiga', 'type': '7-Seater', 'owner': 'Quick Travels', 'ownerType': 'Agency', 'fuel': 'CNG', 'status': 'Inactive', 'rc': 'RC567890', 'insurance': 'INS123456', 'year': 2019},
-    {'id': 'V006', 'number': 'KA-06-IJ-2345', 'model': 'Tata Nexon', 'type': '4-Seater', 'owner': 'Suresh Patel', 'ownerType': 'Individual', 'fuel': 'Electric', 'status': 'Active', 'rc': 'RC678901', 'insurance': 'INS234567', 'year': 2024},
-  ];
+  String _statusLabel(AccountStatus status) {
+    switch (status) {
+      case AccountStatus.active:
+      case AccountStatus.approved:
+        return 'Active';
+      case AccountStatus.pendingVerification:
+        return 'Under Verification';
+      default:
+        return 'Inactive';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _vehicles.where((v) {
-      final matchSearch = _search.isEmpty ||
-          (v['number'] as String).toLowerCase().contains(_search.toLowerCase()) ||
-          (v['model'] as String).toLowerCase().contains(_search.toLowerCase()) ||
-          (v['owner'] as String).toLowerCase().contains(_search.toLowerCase());
-      final matchFilter = _filter == 'All' || v['type'] == _filter || v['status'] == _filter;
-      return matchSearch && matchFilter;
-    }).toList();
+    final driversAsync = ref.watch(firestoreAllDriversProvider);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(DesktopTheme.contentPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionHeader(
-            title: 'Vehicle Management',
-            subtitle: 'Manage all registered vehicles on the platform',
-            action: PrimaryButton(label: 'Add Vehicle', icon: Icons.add_rounded, onPressed: () {}),
-          ),
-          const SizedBox(height: 20),
+    return driversAsync.when(
+      data: (drivers) {
+        final filtered = drivers.where((d) {
+          final matchSearch = _search.isEmpty ||
+              d.vehicleNumber.toLowerCase().contains(_search.toLowerCase()) ||
+              d.vehicleModel.toLowerCase().contains(_search.toLowerCase()) ||
+              (d.agencyName ?? d.fullName).toLowerCase().contains(_search.toLowerCase());
+          final statusStr = _statusLabel(d.status);
+          final matchFilter = _filter == 'All' || d.vehicleType == _filter || statusStr == _filter;
+          return matchSearch && matchFilter;
+        }).toList();
 
-          // Stats
-          Row(
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(DesktopTheme.contentPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _VStat('Total Vehicles', '${_vehicles.length}', DesktopTheme.primaryBlue, Icons.directions_car)),
-              const SizedBox(width: 12),
-              Expanded(child: _VStat('Active', '${_vehicles.where((v) => v['status'] == 'Active').length}', DesktopTheme.successGreen, Icons.check_circle)),
-              const SizedBox(width: 12),
-              Expanded(child: _VStat('Under Verification', '${_vehicles.where((v) => v['status'] == 'Under Verification').length}', DesktopTheme.warningAmber, Icons.pending)),
-              const SizedBox(width: 12),
-              Expanded(child: _VStat('Inactive', '${_vehicles.where((v) => v['status'] == 'Inactive').length}', DesktopTheme.dangerRed, Icons.block)),
-              const SizedBox(width: 12),
-              Expanded(child: _VStat('4-Seaters', '${_vehicles.where((v) => v['type'] == '4-Seater').length}', DesktopTheme.accentTeal, Icons.airline_seat_recline_normal)),
+              const SectionHeader(
+                title: 'Vehicle Management',
+                subtitle: 'Manage all registered vehicles on the platform',
+              ),
+              const SizedBox(height: 20),
+
+              // Stats
+              Row(
+                children: [
+                  Expanded(child: _VStat('Total Vehicles', '${drivers.length}', DesktopTheme.primaryBlue, Icons.directions_car)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VStat('Active', '${drivers.where((d) => d.status == AccountStatus.active || d.status == AccountStatus.approved).length}', DesktopTheme.successGreen, Icons.check_circle)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VStat('Under Verification', '${drivers.where((d) => d.status == AccountStatus.pendingVerification).length}', DesktopTheme.warningAmber, Icons.pending)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VStat('Inactive', '${drivers.where((d) => d.status == AccountStatus.inactive || d.status == AccountStatus.suspended || d.status == AccountStatus.rejected).length}', DesktopTheme.dangerRed, Icons.block)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VStat('4-Seaters', '${drivers.where((d) => d.vehicleType == '4-Seater').length}', DesktopTheme.accentTeal, Icons.airline_seat_recline_normal)),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Filter row
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(color: DesktopTheme.cardBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: DesktopTheme.border)),
+                child: Row(
+                  children: [
+                    DesktopSearchBar(
+                      hint: 'Search vehicle, model, owner...',
+                      width: 300,
+                      onChanged: (v) => setState(() => _search = v),
+                    ),
+                    const SizedBox(width: 16),
+                    for (final f in ['All', '4-Seater', '7-Seater', '13-Seater', 'Active', 'Under Verification', 'Inactive']) ...[
+                      _FChip(label: f, current: _filter, onTap: () => setState(() => _filter = f)),
+                      const SizedBox(width: 8),
+                    ],
+                    const Spacer(),
+                    Text('${filtered.length} vehicles', style: const TextStyle(fontSize: 12, color: DesktopTheme.textMuted)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              if (filtered.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(40),
+                  alignment: Alignment.center,
+                  child: const Text('No vehicles found', style: TextStyle(color: DesktopTheme.textMuted, fontSize: 14)),
+                )
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final crossAxisCount = constraints.maxWidth > 1400 ? 4 : constraints.maxWidth > 900 ? 3 : 2;
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: crossAxisCount == 3 ? 1.6 : 1.4,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (ctx, i) => _VehicleCard(
+                        driver: filtered[i],
+                        statusLabel: _statusLabel(filtered[i].status),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
-          const SizedBox(height: 20),
-
-          // Filter row
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(color: DesktopTheme.cardBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: DesktopTheme.border)),
-            child: Row(
-              children: [
-                DesktopSearchBar(
-                  hint: 'Search vehicle, model, owner...',
-                  width: 300,
-                  onChanged: (v) => setState(() => _search = v),
-                ),
-                const SizedBox(width: 16),
-                for (final f in ['All', '4-Seater', '7-Seater', '13-Seater', 'Active', 'Under Verification', 'Inactive']) ...[
-                  _FChip(label: f, current: _filter, onTap: () => setState(() => _filter = f)),
-                  const SizedBox(width: 8),
-                ],
-                const Spacer(),
-                Text('${filtered.length} vehicles', style: const TextStyle(fontSize: 12, color: DesktopTheme.textMuted)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Grid
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final crossAxisCount = constraints.maxWidth > 1400 ? 4 : constraints.maxWidth > 900 ? 3 : 2;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: crossAxisCount == 3 ? 1.5 : 1.35,
-                ),
-                itemCount: filtered.length,
-                itemBuilder: (ctx, i) => _VehicleCard(vehicle: filtered[i]),
-              );
-            },
-          ),
-        ],
-      ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
     );
   }
 }
@@ -119,8 +142,8 @@ class _VStat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: DesktopTheme.cardBg, borderRadius: BorderRadius.circular(10), border: Border.all(color: DesktopTheme.border)),
-      child:      Row(children: [
-        Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 18)),
+      child: Row(children: [
+        Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 18)),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -169,8 +192,9 @@ class _FChip extends StatelessWidget {
 }
 
 class _VehicleCard extends StatefulWidget {
-  final Map<String, dynamic> vehicle;
-  const _VehicleCard({required this.vehicle});
+  final DriverModel driver;
+  final String statusLabel;
+  const _VehicleCard({required this.driver, required this.statusLabel});
 
   @override
   State<_VehicleCard> createState() => _VehicleCardState();
@@ -181,9 +205,11 @@ class _VehicleCardState extends State<_VehicleCard> {
 
   @override
   Widget build(BuildContext context) {
-    final v = widget.vehicle;
+    final d = widget.driver;
     final typeColors = {'4-Seater': DesktopTheme.primaryBlue, '7-Seater': DesktopTheme.accentTeal, '13-Seater': DesktopTheme.purpleAccent};
-    final typeColor = typeColors[v['type']] ?? DesktopTheme.primaryBlue;
+    final typeColor = typeColors[d.vehicleType] ?? DesktopTheme.primaryBlue;
+    final ownerName = d.agencyName ?? d.fullName;
+    final ownerType = d.driverType == DriverType.agency ? 'Agency' : 'Individual';
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -209,11 +235,11 @@ class _VehicleCardState extends State<_VehicleCard> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(v['model'] as String, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(v['number'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: typeColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(d.vehicleModel.isEmpty ? 'Unknown Model' : d.vehicleModel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(d.vehicleNumber, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: typeColor), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ])),
                 const SizedBox(width: 8),
-                StatusBadge(v['status'] as String),
+                StatusBadge(widget.statusLabel),
               ],
             ),
             const SizedBox(height: 12),
@@ -221,28 +247,27 @@ class _VehicleCardState extends State<_VehicleCard> {
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(child: _VInfo(label: 'Type', value: v['type'] as String)),
-                Expanded(child: _VInfo(label: 'Fuel', value: v['fuel'] as String)),
-                Expanded(child: _VInfo(label: 'Year', value: '${v['year']}')),
+                Expanded(child: _VInfo(label: 'Type', value: d.vehicleType)),
+                Expanded(child: _VInfo(label: 'Driver', value: d.fullName)),
               ],
             ),
             const SizedBox(height: 8),
             Row(children: [
               const Icon(Icons.business_rounded, size: 12, color: DesktopTheme.textMuted),
               const SizedBox(width: 4),
-              Expanded(child: Text(v['owner'] as String, style: const TextStyle(fontSize: 12, color: DesktopTheme.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Expanded(child: Text(ownerName, style: const TextStyle(fontSize: 12, color: DesktopTheme.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis)),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(color: DesktopTheme.contentBg, borderRadius: BorderRadius.circular(4)),
-                child: Text(v['ownerType'] as String, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: DesktopTheme.textMuted)),
+                child: Text(ownerType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: DesktopTheme.textMuted)),
               ),
             ]),
             const SizedBox(height: 8),
             Row(children: [
-              Expanded(child: _DocBadge(label: 'RC', value: v['rc'] as String)),
+              Expanded(child: _DocBadge(label: 'RC', value: d.vehicleRc)),
               const SizedBox(width: 8),
-              Expanded(child: _DocBadge(label: 'Insurance', value: v['insurance'] as String)),
+              Expanded(child: _DocBadge(label: 'Insurance', value: d.insuranceNumber)),
             ]),
           ],
         ),

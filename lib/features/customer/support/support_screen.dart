@@ -1,8 +1,37 @@
 import 'package:flutter/material.dart';
-import '../../../core/app_theme.dart';
 
-class SupportScreen extends StatelessWidget {
+class SupportScreen extends StatefulWidget {
   const SupportScreen({super.key});
+
+  @override
+  State<SupportScreen> createState() => _SupportScreenState();
+}
+
+class _SupportScreenState extends State<SupportScreen> {
+  int? _expandedIndex;
+
+  static const List<MapEntry<String, String>> _faqs = [
+    MapEntry(
+      'Payment issues during trip',
+      'Please try a different payment method. If the payment failed after the trip, contact our support at +91 80000 00000 and we will resolve it within 24 hours.',
+    ),
+    MapEntry(
+      'Driver behavior concerns',
+      'We take driver conduct very seriously. Please rate your experience and add a comment. Our safety team reviews all low-rated trips within 48 hours.',
+    ),
+    MapEntry(
+      'Cancellation charges enquiry',
+      'Cancellation is free within 5 minutes of booking. After that, a charge of ₹50 applies. If the driver cancelled, no charge is applied. View our full policy in Settings → Terms & Conditions.',
+    ),
+    MapEntry(
+      'Lost item in vehicle',
+      'Contact your driver directly via the trip history screen. If unreachable, our support team can assist within 24 hours at +91 80000 00000 or support@novacabs.com.',
+    ),
+    MapEntry(
+      'Refund status',
+      'Refunds for cancelled trips are processed within 5–7 business days. Wallet refunds are instant. Check your bank statement or contact us with your booking ID for a faster update.',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +60,10 @@ class SupportScreen extends StatelessWidget {
             const SizedBox(height: 32),
             const Text('Common Issues', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            _buildFaqItem('Payment issues during trip'),
-            _buildFaqItem('Driver behavior concerns'),
-            _buildFaqItem('Cancellation charges enquiry'),
-            _buildFaqItem('Lost item in vehicle'),
-            _buildFaqItem('Refund status'),
+            ...List.generate(
+              _faqs.length,
+              (i) => _buildFaqItem(i, _faqs[i].key, _faqs[i].value),
+            ),
           ],
         ),
       ),
@@ -57,9 +85,9 @@ class SupportScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
+          color: color.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.1)),
+          border: Border.all(color: color.withValues(alpha: 0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,17 +103,64 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFaqItem(String question) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        title: Text(question, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        trailing: const Icon(Icons.keyboard_arrow_down, size: 20),
-        onTap: () {},
+  Widget _buildFaqItem(int index, String question, String answer) {
+    final isExpanded = _expandedIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _expandedIndex = isExpanded ? null : index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: isExpanded ? Colors.blue.shade50 : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isExpanded ? Colors.blue.shade200 : Colors.transparent,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      question,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isExpanded ? FontWeight.bold : FontWeight.w500,
+                        color: isExpanded ? Colors.blue.shade800 : Colors.black87,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 250),
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      size: 20,
+                      color: isExpanded ? Colors.blue.shade600 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isExpanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text(
+                  answer,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.blue.shade900,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

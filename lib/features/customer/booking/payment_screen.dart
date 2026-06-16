@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/firestore_service.dart';
-import '../../../core/models.dart';
 import '../tracking/trip_tracking_screen.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
@@ -38,9 +36,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   String _selectedMethod = 'UPI';
   bool _isProcessing = false;
 
+  /// Advance booking charge:
+  ///  • 1–20 KM  → flat ₹20
+  ///  • > 20 KM  → ₹1 × estimated KMs
+  double _calcAdvance(double distanceKm) {
+    if (distanceKm <= 20) return 20.0;
+    return distanceKm * 1.0;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final amountToPay = widget.paymentStage == 'Advance' ? 50.0 : (widget.totalFare - 50.0);
+    final advance = _calcAdvance(widget.distance);
+    final amountToPay = widget.paymentStage == 'Advance' ? advance : (widget.totalFare - advance);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -113,9 +120,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.05),
+        color: AppTheme.primaryColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1)),
+        border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
@@ -146,7 +153,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.05) : Colors.white,
+          color: isSelected ? color.withValues(alpha: 0.05) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: isSelected ? color : Colors.grey.shade200, width: isSelected ? 2 : 1),
         ),
@@ -154,7 +161,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 16),
@@ -216,19 +223,59 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         tripTime: '10:00 AM',
         status: BookingStatus.booked, // Driver needs to accept it via dashboard
         driverId: widget.driver.id,
-        advancePaid: 50.0,
+        advancePaid: _calcAdvance(widget.distance),
         paymentStatus: PaymentStatus.success,
         createdAt: DateTime.now(),
         rentalPackage: widget.rentalPackage,
       );
 
       // Save explicitly to Firestore 'bookings' collection
-      await ref.read(firestoreServiceProvider).createBooking(trip);
+      await ref.read(firestoreServiceProvider).saveTripRequest(trip);
 
       // Add to global state (optional if stream is listening, but provides immediate feedback)
       ref.read(bookingProvider.notifier).addBooking(trip);
 
-      // Navigate to tracking
+      if (!mounted) return;
+      // Show confirmation then navigate to tracking
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green),
+                child: const Icon(Icons.check, color: Colors.white, size: 36),
+              ),
+              const SizedBox(height: 16),
+              const Text('Payment Successful!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text(
+                'Advance paid. Your confirmed trip has been sent to the driver. Track your ride below.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Track My Ride', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => TripTrackingScreen(trip: trip, driver: widget.driver)),

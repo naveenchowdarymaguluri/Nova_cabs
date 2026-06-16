@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/extended_mock_data.dart';
 import '../../../core/extended_models.dart';
+import '../../../core/firestore_service.dart';
 import '../../shared/otp_screen.dart';
 import '../dashboard/agency_dashboard.dart';
 import '../registration/agency_registration_screen.dart';
@@ -193,7 +193,7 @@ class _AgencyLoginScreenState extends ConsumerState<AgencyLoginScreen> {
     );
   }
 
-  void _sendOtp() async {
+  Future<void> _sendOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -202,59 +202,65 @@ class _AgencyLoginScreenState extends ConsumerState<AgencyLoginScreen> {
       return;
     }
     setState(() => _isLoading = true);
-    await ref.read(otpProvider.notifier).sendOtp('+91 $phone');
+    final sent = await ref.read(otpProvider.notifier).sendOtp('+91$phone');
     if (!mounted) return;
     setState(() => _isLoading = false);
+
+    if (!sent) {
+      final error = ref.read(otpProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Failed to send OTP. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OtpScreen(
-          phone: '+91 $phone',
+          phone: '+91$phone',
           role: 'Agency',
-          onVerified: () => _onOtpVerified('+91 $phone'),
+          onVerified: () => _onOtpVerified('+91$phone'),
         ),
       ),
     );
   }
 
-  void _onOtpVerified(String phone) {
-    // Standardize phone for comparison
-    final normalizedPhone = phone.replaceAll(RegExp(r'\s+'), '');
-    
-    // Check if agency exists in the system
-    final agencies = ref.read(agencyListProvider);
-    final existing = agencies.where((a) {
-      final ap = a.phoneNumber.replaceAll(RegExp(r'\s+'), '');
-      return ap == normalizedPhone;
-    }).firstOrNull;
+  Future<void> _onOtpVerified(String phone) async {
+    // Fresh Firestore query — avoids stale in-memory cache and handles all
+    // phone formats correctly via normalizePhone() inside getAgencyByPhone().
+    final firestore = ref.read(firestoreServiceProvider);
+    final existing = await firestore.getAgencyByPhone(phone);
+
+    if (!mounted) return;
 
     if (existing != null) {
-      // Login existing agency
       ref.read(authProvider.notifier).loginAsAgency(
         name: existing.agencyName,
         phone: phone,
         id: existing.id,
       );
 
-      if (existing.status == AccountStatus.approved || existing.status == AccountStatus.active) {
-        Navigator.pop(context); // Close OTP screen
-        Navigator.pushReplacement(
+      if (existing.status == AccountStatus.approved ||
+          existing.status == AccountStatus.active) {
+        Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => AgencyDashboard(agency: existing)),
+          MaterialPageRoute(builder: (_) => AgencyDashboard(agency: existing)),
+          (route) => false,
         );
-      } else if (existing.status == AccountStatus.pendingVerification) {
-        _showPendingDialog();
       } else {
         _showPendingDialog();
       }
     } else {
-      Navigator.pop(context); // Close OTP screen
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => AgencyRegistrationScreen(phone: phone),
+          builder: (_) => AgencyRegistrationScreen(phone: phone),
         ),
+        (route) => false,
       );
     }
   }

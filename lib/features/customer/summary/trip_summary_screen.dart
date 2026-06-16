@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/firestore_service.dart';
 import '../booking/payment_screen.dart';
@@ -58,7 +57,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.check_circle, color: Colors.green, size: 64),
         ),
         const SizedBox(height: 16),
@@ -70,11 +69,18 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   }
 
   Widget _buildTripStats() {
+    final distance = widget.trip.actualDistance ?? widget.trip.estimatedDistance;
+    // Estimate duration assuming 40 km/h average speed
+    final durationMins = (distance / 40.0 * 60).round();
+    final durationStr = durationMins >= 60
+        ? '${durationMins ~/ 60}h ${durationMins % 60}m'
+        : '$durationMins Mins';
+
     return Row(
       children: [
-        _buildStatItem('Distance', '${widget.trip.actualDistance ?? widget.trip.estimatedDistance} KM'),
-        _buildStatItem('Duration', '45 Mins'),
-        _buildStatItem('Time', '10:45 AM'),
+        _buildStatItem('Distance', '${distance.toStringAsFixed(1)} KM'),
+        _buildStatItem('Duration', durationStr),
+        _buildStatItem('Time', widget.trip.tripTime),
       ],
     );
   }
@@ -138,20 +144,19 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
       children: [
         const Text('Fare Breakdown', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        _buildFareRow('Base Fare', '₹100'),
+        _buildFareRow('Base Fare', '₹${widget.driver.pricing?.baseFare.toInt() ?? 100}'),
         _buildFareRow(
-          widget.trip.rentalPackage != null ? 'Package Fare' : 'Distance Fare (${widget.trip.actualDistance} KM)', 
-          '₹${((widget.trip.actualDistance ?? 0) * (widget.driver.pricing?.pricePerKm ?? 12)).toInt()}',
+          widget.trip.rentalPackage != null ? 'Package Fare' : 'Distance Fare (${(widget.trip.actualDistance ?? widget.trip.estimatedDistance).toStringAsFixed(1)} KM)',
+          '₹${((widget.trip.actualDistance ?? widget.trip.estimatedDistance) * (widget.driver.pricing?.pricePerKm ?? 12)).toInt()}',
         ),
         _buildFareRow('Toll Charges', '₹0'),
-        _buildFareRow('Driver Allowance', '₹300'),
         const Divider(height: 32),
-        _buildFareRow('Total Fare', '₹${widget.trip.finalFare?.toInt()}', isBold: true),
-        _buildFareRow('Advance Paid', '- ₹500', color: Colors.green),
+        _buildFareRow('Total Fare', '₹${(widget.trip.finalFare ?? widget.trip.estimatedFare).toInt()}', isBold: true),
+        _buildFareRow('Advance Paid', '- ₹${widget.trip.advancePaid.toInt()}', color: Colors.green),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
           child: _buildFareRow('Remaining Payment', '₹${remaining.toInt()}', isBold: true, color: AppTheme.primaryColor),
         ),
       ],
@@ -176,7 +181,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))],
       ),
       child: SafeArea(
         child: SizedBox(

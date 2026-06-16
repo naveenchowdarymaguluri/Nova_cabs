@@ -1,56 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
+import '../../../core/app_providers.dart';
 import '../../../core/models.dart';
 
-class CustomerManagementScreen extends StatefulWidget {
+class CustomerManagementScreen extends ConsumerStatefulWidget {
   const CustomerManagementScreen({super.key});
 
   @override
-  State<CustomerManagementScreen> createState() => _CustomerManagementScreenState();
+  ConsumerState<CustomerManagementScreen> createState() => _CustomerManagementScreenState();
 }
 
-class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
-  List<Customer> _customers = List.from(MockData.customers);
+class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScreen> {
   String _searchQuery = '';
-
-  List<Customer> get _filteredCustomers => _customers
-      .where((c) =>
-          c.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          c.phone.contains(_searchQuery) ||
-          c.email.toLowerCase().contains(_searchQuery.toLowerCase()))
-      .toList();
 
   @override
   Widget build(BuildContext context) {
+    final customersAsync = ref.watch(firestoreAllCustomersProvider);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Customer Management'),
-      ),
-      body: Column(
-        children: [
-          _buildSummaryCards(),
-          _buildSearchBar(),
-          Expanded(
-            child: _filteredCustomers.isEmpty
-                ? const Center(child: Text('No customers found'))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredCustomers.length,
-                    itemBuilder: (context, index) =>
-                        _buildCustomerCard(_filteredCustomers[index]),
-                  ),
-          ),
-        ],
+      appBar: AppBar(title: const Text('Customer Management')),
+      body: customersAsync.when(
+        data: (customers) {
+          final filtered = customers.where((c) =>
+            c.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            c.phone.contains(_searchQuery) ||
+            c.email.toLowerCase().contains(_searchQuery.toLowerCase()),
+          ).toList();
+
+          final blocked = customers.where((c) => c.isBlocked).length;
+          final totalRevenue = customers.fold(0.0, (sum, c) => sum + c.totalSpent);
+
+          return Column(
+            children: [
+              _buildSummaryCards(customers.length, blocked, totalRevenue),
+              _buildSearchBar(),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(child: Text('No customers found'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) => _buildCustomerCard(filtered[index]),
+                      ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildSummaryCards() {
-    final total = _customers.length;
-    final blocked = _customers.where((c) => c.isBlocked).length;
-    final totalRevenue = _customers.fold(0.0, (sum, c) => sum + c.totalSpent);
-
+  Widget _buildSummaryCards(int total, int blocked, double totalRevenue) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -93,10 +96,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           hintText: 'Search by name, phone, email...',
           prefixIcon: const Icon(Icons.search),
           suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () => setState(() => _searchQuery = ''),
-                )
+              ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _searchQuery = ''))
               : null,
         ),
       ),
@@ -124,7 +124,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                       ? Colors.red.shade100
                       : AppTheme.primaryColor.withValues(alpha: 0.1),
                   child: Text(
-                    customer.name[0],
+                    customer.name.isNotEmpty ? customer.name[0] : '?',
                     style: TextStyle(
                       color: customer.isBlocked ? Colors.red : AppTheme.primaryColor,
                       fontWeight: FontWeight.bold,
@@ -139,20 +139,13 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            customer.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
+                          Text(customer.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                           if (customer.isBlocked) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text('BLOCKED',
-                                  style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
+                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(6)),
+                              child: const Text('BLOCKED', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ],
@@ -162,10 +155,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                     ],
                   ),
                 ),
-                Text(
-                  'ID: ${customer.id}',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 10),
-                ),
+                Text('ID: ${customer.id.length > 8 ? customer.id.substring(0, 8) : customer.id}',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
               ],
             ),
             const Divider(height: 20),
@@ -174,7 +165,13 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
               children: [
                 _buildStat('Bookings', '${customer.totalBookings}', Icons.book_online),
                 _buildStat('Spent', '₹${customer.totalSpent.toStringAsFixed(0)}', Icons.payments),
-                _buildStat('Avg/Trip', '₹${(customer.totalSpent / customer.totalBookings).toStringAsFixed(0)}', Icons.trending_up),
+                _buildStat(
+                  'Avg/Trip',
+                  customer.totalBookings > 0
+                      ? '₹${(customer.totalSpent / customer.totalBookings).toStringAsFixed(0)}'
+                      : '₹0',
+                  Icons.trending_up,
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -239,19 +236,20 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
-              setState(() => customer.isBlocked = !customer.isBlocked);
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(customer.isBlocked ? '${customer.name} blocked' : '${customer.name} unblocked'),
-                  backgroundColor: customer.isBlocked ? Colors.red : Colors.green,
-                ),
+              await ref.read(customerListProvider.notifier).updateCustomerBlockStatus(
+                customer.id,
+                !customer.isBlocked,
               );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(customer.isBlocked ? '${customer.name} unblocked' : '${customer.name} blocked'),
+                  backgroundColor: customer.isBlocked ? Colors.green : Colors.red,
+                ));
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: customer.isBlocked ? Colors.green : Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: customer.isBlocked ? Colors.green : Colors.red),
             child: Text(customer.isBlocked ? 'Unblock' : 'Block'),
           ),
         ],
@@ -260,50 +258,54 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   }
 
   void _showBookingHistory(Customer customer) {
-    final customerBookings = MockData.bookings
-        .where((b) => b.customerName == customer.name)
-        .toList();
-
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${customer.name}\'s Bookings',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            Expanded(
-              child: customerBookings.isEmpty
-                  ? const Center(child: Text('No bookings found'))
-                  : ListView.builder(
-                      itemCount: customerBookings.length,
-                      itemBuilder: (context, index) {
-                        final b = customerBookings[index];
-                        return ListTile(
-                          leading: const Icon(Icons.directions_car, color: AppTheme.primaryColor),
-                          title: Text('${b.pickupLocation} → ${b.dropLocation}',
-                              style: const TextStyle(fontSize: 13)),
-                          subtitle: Text('${b.date} • ₹${b.totalFare.toStringAsFixed(0)}'),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(b.status,
-                                style: const TextStyle(fontSize: 10, color: Colors.blue)),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final bookingsAsync = ref.watch(firestoreCustomerBookingsProvider(customer.id));
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("${customer.name}'s Bookings",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: bookingsAsync.when(
+                    data: (bookings) => bookings.isEmpty
+                        ? const Center(child: Text('No bookings found'))
+                        : ListView.builder(
+                            itemCount: bookings.length,
+                            itemBuilder: (context, index) {
+                              final b = bookings[index];
+                              return ListTile(
+                                leading: const Icon(Icons.directions_car, color: AppTheme.primaryColor),
+                                title: Text('${b.pickupLocation} → ${b.dropLocation}',
+                                    style: const TextStyle(fontSize: 13)),
+                                subtitle: Text(
+                                    '${b.tripDate.day}/${b.tripDate.month}/${b.tripDate.year} • ₹${(b.finalFare ?? b.estimatedFare).toStringAsFixed(0)}'),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(b.status.name,
+                                      style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Center(child: Text('Error: $e')),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

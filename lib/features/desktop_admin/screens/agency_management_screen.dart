@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/desktop_theme.dart';
 import '../shared/desktop_widgets.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 
 final agencySearchProvider = StateProvider<String>((ref) => '');
 final agencyFilterProvider = StateProvider<String>((ref) => 'All');
@@ -37,7 +39,7 @@ class AgencyManagementScreen extends ConsumerWidget {
             action: PrimaryButton(
               label: 'Add Agency',
               icon: Icons.add_rounded,
-              onPressed: () {},
+              onPressed: () => _showAddAgencyDialog(context, ref),
             ),
           ),
           const SizedBox(height: 20),
@@ -114,7 +116,7 @@ class _AgencyStat extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, color: color, size: 18),
           ),
           Expanded(
@@ -224,9 +226,9 @@ class _AgencyCardState extends State<_AgencyCard> {
         decoration: BoxDecoration(
           color: DesktopTheme.cardBg,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _hovered ? DesktopTheme.primaryBlue.withOpacity(0.3) : DesktopTheme.border),
+          border: Border.all(color: _hovered ? DesktopTheme.primaryBlue.withValues(alpha: 0.3) : DesktopTheme.border),
           boxShadow: _hovered
-              ? [BoxShadow(color: DesktopTheme.primaryBlue.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))]
+              ? [BoxShadow(color: DesktopTheme.primaryBlue.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))]
               : [],
         ),
         child: Column(
@@ -480,6 +482,199 @@ class _StatChip extends StatelessWidget {
         border: Border.all(color: DesktopTheme.border),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: DesktopTheme.textSecondary)),
+    );
+  }
+}
+
+void _showAddAgencyDialog(BuildContext context, WidgetRef ref) {
+  final nameCtrl = TextEditingController();
+  final ownerCtrl = TextEditingController();
+  final phoneCtrl = TextEditingController();
+  final emailCtrl = TextEditingController();
+  final addressCtrl = TextEditingController();
+  final gstCtrl = TextEditingController();
+  bool isLoading = false;
+
+  showDialog(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => Dialog(
+        backgroundColor: DesktopTheme.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: DesktopTheme.accentTeal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.business_rounded, color: DesktopTheme.accentTeal, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    const Text('Add New Agency', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Divider(color: DesktopTheme.border),
+                const SizedBox(height: 20),
+
+                _AgencyFormField(ctrl: nameCtrl, label: 'Agency Name', icon: Icons.business, capitalization: TextCapitalization.words),
+                const SizedBox(height: 12),
+                _AgencyFormField(
+                  ctrl: ownerCtrl, label: 'Owner Name', icon: Icons.person,
+                  capitalization: TextCapitalization.words,
+                  formatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z ]'))],
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: _AgencyFormField(
+                    ctrl: phoneCtrl, label: 'Phone Number', icon: Icons.phone, hint: '10-digit number',
+                    keyboardType: TextInputType.number,
+                    formatters: [FilteringTextInputFormatter.digitsOnly],
+                    maxLength: 10,
+                  )),
+                  const SizedBox(width: 16),
+                  Expanded(child: _AgencyFormField(
+                    ctrl: emailCtrl, label: 'Email Address', icon: Icons.email, hint: 'agency@example.com',
+                    keyboardType: TextInputType.emailAddress,
+                  )),
+                ]),
+                const SizedBox(height: 12),
+                _AgencyFormField(ctrl: addressCtrl, label: 'Business Address', icon: Icons.location_on),
+                const SizedBox(height: 12),
+                _AgencyFormField(
+                  ctrl: gstCtrl, label: 'GST Number (Optional)', icon: Icons.receipt_long,
+                  capitalization: TextCapitalization.characters,
+                  formatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+                  maxLength: 15,
+                ),
+
+                const SizedBox(height: 28),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: isLoading ? null : () async {
+                        String? error;
+                        if (nameCtrl.text.trim().length < 3) {
+                          error = 'Agency name must be at least 3 characters';
+                        } else if (phoneCtrl.text.trim().length != 10) {
+                          error = 'Mobile number must be exactly 10 digits';
+                        } else if (emailCtrl.text.trim().isNotEmpty &&
+                            !RegExp(r'^[\w\.\-]+@[\w\-]+\.\w{2,}$').hasMatch(emailCtrl.text.trim())) {
+                          error = 'Enter a valid email address';
+                        } else if (addressCtrl.text.trim().length < 10) {
+                          error = 'Please enter complete business address';
+                        } else if (gstCtrl.text.trim().isNotEmpty && gstCtrl.text.trim().length != 15) {
+                          error = 'GST number must be exactly 15 characters';
+                        }
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error), backgroundColor: DesktopTheme.dangerRed),
+                          );
+                          return;
+                        }
+                        setState(() => isLoading = true);
+                        final agency = AgencyModel(
+                          id: 'AGN${DateTime.now().millisecondsSinceEpoch}',
+                          agencyName: nameCtrl.text.trim(),
+                          ownerName: ownerCtrl.text.trim(),
+                          phoneNumber: phoneCtrl.text.trim(),
+                          email: emailCtrl.text.trim(),
+                          businessAddress: addressCtrl.text.trim(),
+                          gstNumber: gstCtrl.text.trim().isEmpty ? null : gstCtrl.text.trim(),
+                          status: AccountStatus.pendingVerification,
+                          totalDrivers: 0,
+                          totalVehicles: 0,
+                          totalEarnings: 0,
+                          totalBookings: 0,
+                          registeredAt: DateTime.now(),
+                        );
+                        await ref.read(firestoreServiceProvider).saveAgency(agency);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Agency added successfully!'), backgroundColor: DesktopTheme.successGreen),
+                          );
+                        }
+                      },
+                      icon: isLoading
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.check_rounded, size: 16),
+                      label: const Text('Add Agency'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DesktopTheme.accentTeal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _AgencyFormField extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String label;
+  final IconData icon;
+  final String? hint;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? formatters;
+  final int? maxLength;
+  final TextCapitalization capitalization;
+
+  const _AgencyFormField({
+    required this.ctrl,
+    required this.label,
+    required this.icon,
+    this.hint,
+    this.keyboardType,
+    this.formatters,
+    this.maxLength,
+    this.capitalization = TextCapitalization.none,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: ctrl,
+      style: const TextStyle(fontSize: 13),
+      keyboardType: keyboardType,
+      inputFormatters: formatters,
+      maxLength: maxLength,
+      textCapitalization: capitalization,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 18),
+        filled: true,
+        fillColor: DesktopTheme.contentBg,
+        counterText: '',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: DesktopTheme.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: DesktopTheme.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: DesktopTheme.primaryBlue, width: 1.5)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      ),
     );
   }
 }

@@ -43,3 +43,45 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ============================================================
+# SECURITY: Secret / sensitive files - NEVER commit these
+# ============================================================
+
+# Environment variables & local secrets
+.env
+.env.*
+!.env.example
+
+# Firebase generated config (contains API keys)
+lib/firebase_options.dart
+
+# Android Firebase config
+google-services.json
+android/app/google-services.json
+
+# iOS Firebase config
+GoogleService-Info.plist
+ios/Runner/GoogleService-Info.plist
+
+# Keystore / signing files
+*.jks
+*.keystore
+key.properties
+android/key.properties
+
+# Service account keys
+*-service-account*.json
+service_account*.json
+
+# Analysis / debug output files (project-specific)
+analysis.txt
+analysis_utf8.txt
+analysis_output*.txt
+analysis_results.txt
+analyze.txt
+analyze_output.txt
+errors.json
+errors.txt
+output.txt
+build_log*.txt

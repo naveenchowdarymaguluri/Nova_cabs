@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
 import '../../../core/firestore_service.dart';
@@ -350,12 +349,7 @@ class _BookingManagementScreenState extends ConsumerState<BookingManagementScree
                     return ElevatedButton(
                       onPressed: () async {
                         // In a real app, logic to update Firestore
-                        await ref.read(firestoreServiceProvider).updateTrip(
-                          // Need a proper way to update just status, 
-                          // but for now we'll assume there is a method or we build one.
-                          // Actually TripRequest should have a way to clone with new status.
-                          // For now, let's just show a simulated update or finish the logic.
-                        );
+                        await ref.read(firestoreServiceProvider).updateTripStatus(booking.bookingId, status);
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Status update simulated for ${status.name}'), backgroundColor: Colors.blue),

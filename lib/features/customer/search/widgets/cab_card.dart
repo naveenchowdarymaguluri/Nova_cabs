@@ -30,7 +30,7 @@ class CabCard extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
-              ? [BoxShadow(color: AppTheme.primaryColor.withOpacity(0.1), blurRadius: 8, spreadRadius: 2)]
+              ? [BoxShadow(color: AppTheme.primaryColor.withValues(alpha: 0.1), blurRadius: 8, spreadRadius: 2)]
               : [],
         ),
         child: Row(

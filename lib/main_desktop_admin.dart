@@ -1,25 +1,15 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'features/desktop_admin/core/desktop_theme.dart';
 import 'features/desktop_admin/shared/desktop_widgets.dart';
 import 'features/desktop_admin/screens/admin_login_desktop.dart';
 import 'features/desktop_admin/screens/desktop_admin_shell.dart';
+import 'firebase_options.dart';
 
-/// Entry point for the Nova Cabs Super Admin Desktop Application.
-/// This is a production-ready desktop dashboard for Windows/macOS/Linux.
-/// 
-/// To run:  flutter run -d windows (or macos/linux)
-///
-/// Features:
-/// - JWT-based admin login
-/// - Dashboard with real-time analytics
-/// - Driver, agency, vehicle, booking, payment management
-/// - Reports & analytics with fl_chart
-/// - Notification management with WhatsApp templates
-/// - System settings (pricing, commission, verification rules)
-/// - Dark sidebar + light content desktop layout
-
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(
     const ProviderScope(
       child: NovaCabsDesktopAdminApp(),

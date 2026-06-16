@@ -9,7 +9,7 @@ class Cab {
   final String estimatedArrival;
   final String vehicleNumber;
   final String fuelType;
-  bool isAvailable;
+  final bool isAvailable;
 
   Cab({
     required this.id,
@@ -24,6 +24,34 @@ class Cab {
     this.fuelType = 'Petrol',
     this.isAvailable = true,
   });
+
+  Cab copyWith({
+    String? id,
+    String? model,
+    String? type,
+    String? agencyName,
+    String? imageUrl,
+    double? rating,
+    double? pricePerKm,
+    String? estimatedArrival,
+    String? vehicleNumber,
+    String? fuelType,
+    bool? isAvailable,
+  }) {
+    return Cab(
+      id: id ?? this.id,
+      model: model ?? this.model,
+      type: type ?? this.type,
+      agencyName: agencyName ?? this.agencyName,
+      imageUrl: imageUrl ?? this.imageUrl,
+      rating: rating ?? this.rating,
+      pricePerKm: pricePerKm ?? this.pricePerKm,
+      estimatedArrival: estimatedArrival ?? this.estimatedArrival,
+      vehicleNumber: vehicleNumber ?? this.vehicleNumber,
+      fuelType: fuelType ?? this.fuelType,
+      isAvailable: isAvailable ?? this.isAvailable,
+    );
+  }
 }
 
 class BookingOffer {
@@ -35,7 +63,7 @@ class BookingOffer {
   final String discountType; // Flat or Percentage
   final double discountValue;
   final List<String> applicableCabTypes;
-  bool isActive;
+  final bool isActive;
 
   BookingOffer({
     required this.id,
@@ -48,6 +76,30 @@ class BookingOffer {
     this.applicableCabTypes = const ['4-Seater', '7-Seater', '13-Seater'],
     this.isActive = true,
   });
+
+  BookingOffer copyWith({
+    String? id,
+    String? title,
+    String? discount,
+    String? validity,
+    String? imageUrl,
+    String? discountType,
+    double? discountValue,
+    List<String>? applicableCabTypes,
+    bool? isActive,
+  }) {
+    return BookingOffer(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      discount: discount ?? this.discount,
+      validity: validity ?? this.validity,
+      imageUrl: imageUrl ?? this.imageUrl,
+      discountType: discountType ?? this.discountType,
+      discountValue: discountValue ?? this.discountValue,
+      applicableCabTypes: applicableCabTypes ?? this.applicableCabTypes,
+      isActive: isActive ?? this.isActive,
+    );
+  }
 }
 
 class Booking {
@@ -96,7 +148,7 @@ class TravelAgency {
   final String address;
   final String gstNumber;
   final String bankDetails;
-  bool isActive;
+  final bool isActive;
 
   TravelAgency({
     required this.id,
@@ -110,6 +162,32 @@ class TravelAgency {
     this.bankDetails = '',
     this.isActive = true,
   });
+
+  TravelAgency copyWith({
+    String? id,
+    String? name,
+    String? contactPerson,
+    String? mobileNumber,
+    String? whatsappNumber,
+    String? email,
+    String? address,
+    String? gstNumber,
+    String? bankDetails,
+    bool? isActive,
+  }) {
+    return TravelAgency(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      contactPerson: contactPerson ?? this.contactPerson,
+      mobileNumber: mobileNumber ?? this.mobileNumber,
+      whatsappNumber: whatsappNumber ?? this.whatsappNumber,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      gstNumber: gstNumber ?? this.gstNumber,
+      bankDetails: bankDetails ?? this.bankDetails,
+      isActive: isActive ?? this.isActive,
+    );
+  }
 }
 
 class Customer {
@@ -119,7 +197,7 @@ class Customer {
   final String email;
   final int totalBookings;
   final double totalSpent;
-  bool isBlocked; // Changed to non-final to allow UI updates
+  final bool isBlocked;
 
   Customer({
     required this.id,
@@ -130,6 +208,26 @@ class Customer {
     this.totalSpent = 0.0,
     this.isBlocked = false,
   });
+
+  Customer copyWith({
+    String? id,
+    String? name,
+    String? phone,
+    String? email,
+    int? totalBookings,
+    double? totalSpent,
+    bool? isBlocked,
+  }) {
+    return Customer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      totalBookings: totalBookings ?? this.totalBookings,
+      totalSpent: totalSpent ?? this.totalSpent,
+      isBlocked: isBlocked ?? this.isBlocked,
+    );
+  }
 }
 
 class CustomerFeedback {
@@ -140,7 +238,7 @@ class CustomerFeedback {
   final String comment;
   final String cabModel;
   final String agencyName;
-  bool isFlagged;
+  final bool isFlagged;
 
   CustomerFeedback({
     required this.id,
@@ -152,6 +250,28 @@ class CustomerFeedback {
     this.agencyName = 'Quick Travels',
     this.isFlagged = false,
   });
+
+  CustomerFeedback copyWith({
+    String? id,
+    String? customerName,
+    String? date,
+    double? rating,
+    String? comment,
+    String? cabModel,
+    String? agencyName,
+    bool? isFlagged,
+  }) {
+    return CustomerFeedback(
+      id: id ?? this.id,
+      customerName: customerName ?? this.customerName,
+      date: date ?? this.date,
+      rating: rating ?? this.rating,
+      comment: comment ?? this.comment,
+      cabModel: cabModel ?? this.cabModel,
+      agencyName: agencyName ?? this.agencyName,
+      isFlagged: isFlagged ?? this.isFlagged,
+    );
+  }
 }
 
 class NotificationTemplate {
@@ -159,7 +279,7 @@ class NotificationTemplate {
   String name; // Renamed from title to match mock data uses or vice-versa
   String template; // Renamed from body to match UI uses
   final String type; // SMS, Push, Email
-  bool isEnabled;
+  final bool isEnabled;
 
   NotificationTemplate({
     required this.id,
@@ -168,4 +288,20 @@ class NotificationTemplate {
     required this.type,
     this.isEnabled = true,
   });
+
+  NotificationTemplate copyWith({
+    String? id,
+    String? name,
+    String? template,
+    String? type,
+    bool? isEnabled,
+  }) {
+    return NotificationTemplate(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      template: template ?? this.template,
+      type: type ?? this.type,
+      isEnabled: isEnabled ?? this.isEnabled,
+    );
+  }
 }

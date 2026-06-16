@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
@@ -57,7 +58,7 @@ class _AgencyRegistrationScreenState
   }
 
   Widget _buildStepIndicator() {
-    final steps = ['Agency Info', 'Owner Info', 'Submit'];
+    final steps = ['Agency Info', 'Owner Info', 'Bank Details', 'Submit'];
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -112,30 +113,48 @@ class _AgencyRegistrationScreenState
         return _buildAgencyInfoStep();
       case 1:
         return _buildOwnerInfoStep();
+      case 2:
+        return _buildBankDetailsStep();
       default:
         return _buildReviewStep();
     }
   }
 
-  Widget _field(TextEditingController c, String label, String hint, IconData icon, {bool required = true, TextInputType? type}) {
+  Widget _field(
+    TextEditingController c,
+    String label,
+    String hint,
+    IconData icon, {
+    bool required = true,
+    TextInputType? type,
+    List<TextInputFormatter>? formatters,
+    int? maxLength,
+    TextCapitalization capitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: c,
         keyboardType: type,
+        inputFormatters: formatters,
+        maxLength: maxLength,
+        textCapitalization: capitalization,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           prefixIcon: Icon(icon),
           filled: true,
           fillColor: Colors.white,
+          counterText: '',
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.grey.shade300),
           ),
         ),
-        validator: required ? (v) => (v == null || v.isEmpty) ? 'Required' : null : null,
+        validator: validator ?? (required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null),
       ),
     );
   }
@@ -145,9 +164,35 @@ class _AgencyRegistrationScreenState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('Agency Details', Icons.business, const Color(0xFFE65100)),
-        _field(_agencyNameController, 'Agency Name', 'e.g. Quick Travels Pvt Ltd', Icons.business),
-        _field(_addressController, 'Business Address', 'Full address with city & PIN', Icons.location_on_outlined),
-        _field(_gstController, 'GST Number (Optional)', 'e.g. 29ABCDE1234F1Z5', Icons.receipt_outlined, required: false),
+        _field(
+          _agencyNameController, 'Agency Name', 'e.g. Quick Travels Pvt Ltd', Icons.business,
+          capitalization: TextCapitalization.words,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Agency name is required';
+            if (v.trim().length < 3) return 'Name must be at least 3 characters';
+            return null;
+          },
+        ),
+        _field(
+          _addressController, 'Business Address', 'Full address with city & PIN', Icons.location_on_outlined,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Business address is required';
+            if (v.trim().length < 10) return 'Please enter complete address';
+            return null;
+          },
+        ),
+        _field(
+          _gstController, 'GST Number (Optional)', 'e.g. 29ABCDE1234F1Z5', Icons.receipt_outlined,
+          required: false,
+          capitalization: TextCapitalization.characters,
+          maxLength: 15,
+          formatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return null;
+            if (v.trim().length != 15) return 'GST number must be 15 characters';
+            return null;
+          },
+        ),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -177,7 +222,16 @@ class _AgencyRegistrationScreenState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('Owner / Contact Info', Icons.person_outline, Colors.blue),
-        _field(_ownerNameController, 'Owner Name', 'Full legal name', Icons.person_outline),
+        _field(
+          _ownerNameController, 'Owner Name', 'Full legal name', Icons.person_outline,
+          capitalization: TextCapitalization.words,
+          formatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z ]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Owner name is required';
+            if (v.trim().length < 3) return 'Name must be at least 3 characters';
+            return null;
+          },
+        ),
         Container(
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(14),
@@ -206,7 +260,15 @@ class _AgencyRegistrationScreenState
             ],
           ),
         ),
-        _field(_emailController, 'Business Email', 'agency@example.com', Icons.email_outlined, type: TextInputType.emailAddress),
+        _field(
+          _emailController, 'Business Email', 'agency@example.com', Icons.email_outlined,
+          type: TextInputType.emailAddress,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Email is required';
+            if (!RegExp(r'^[\w\.\-]+@[\w\-]+\.\w{2,}$').hasMatch(v.trim())) return 'Enter valid email address';
+            return null;
+          },
+        ),
       ],
     );
   }
@@ -217,8 +279,39 @@ class _AgencyRegistrationScreenState
       children: [
         _sectionTitle('Bank & Payment Info', Icons.account_balance, Colors.green),
         _field(_bankNameController, 'Bank Name', 'e.g. State Bank of India', Icons.account_balance_outlined),
-        _field(_bankAccountController, 'Account Number', 'Your bank account number', Icons.numbers, type: TextInputType.number),
-        _field(_ifscController, 'IFSC Code', 'e.g. SBIN0001234', Icons.code),
+        _field(
+          _bankAccountController,
+          'Account Number',
+          'Your bank account number',
+          Icons.numbers,
+          type: TextInputType.number,
+          formatters: [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 18,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Account number is required';
+            final digits = v.trim();
+            if (digits.length < 9 || digits.length > 18) return 'Account number must be 9–18 digits';
+            return null;
+          },
+        ),
+        _field(
+          _ifscController,
+          'IFSC Code',
+          'e.g. SBIN0001234',
+          Icons.code,
+          capitalization: TextCapitalization.characters,
+          maxLength: 11,
+          formatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'IFSC code is required';
+            final ifsc = v.trim().toUpperCase();
+            if (ifsc.length != 11) return 'IFSC must be exactly 11 characters';
+            if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(ifsc)) {
+              return 'Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0001234)';
+            }
+            return null;
+          },
+        ),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -259,6 +352,12 @@ class _AgencyRegistrationScreenState
           ['Mobile Number', widget.phone],
           ['Email', _emailController.text],
         ], Icons.person_outline, Colors.blue),
+        const SizedBox(height: 12),
+        _reviewCard('Bank Details', [
+          ['Bank Name', _bankNameController.text.isEmpty ? 'Not provided' : _bankNameController.text],
+          ['Account', _bankAccountController.text.isEmpty ? 'Not provided' : '••••${_bankAccountController.text.length > 4 ? _bankAccountController.text.substring(_bankAccountController.text.length - 4) : _bankAccountController.text}'],
+          ['IFSC Code', _ifscController.text.isEmpty ? 'Not provided' : _ifscController.text.toUpperCase()],
+        ], Icons.account_balance_outlined, Colors.green),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(14),
@@ -360,7 +459,7 @@ class _AgencyRegistrationScreenState
               ),
               child: _isSubmitting
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : Text(_currentStep == 2 ? 'Submit Application' : 'Next', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  : Text(_currentStep == 3 ? 'Submit Application' : 'Next', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           ),
         ],
@@ -369,7 +468,7 @@ class _AgencyRegistrationScreenState
   }
 
   void _next() {
-    if (_currentStep < 2) {
+    if (_currentStep < 3) {
       if (_formKey.currentState!.validate()) setState(() => _currentStep++);
     } else {
       _submit();

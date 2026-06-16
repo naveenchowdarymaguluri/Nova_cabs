@@ -1,56 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 import '../../../core/models.dart';
 
-class OffersManagementScreen extends StatefulWidget {
+class OffersManagementScreen extends ConsumerWidget {
   const OffersManagementScreen({super.key});
 
   @override
-  State<OffersManagementScreen> createState() => _OffersManagementScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final offersAsync = ref.watch(firestoreOffersProvider);
 
-class _OffersManagementScreenState extends State<OffersManagementScreen> {
-  List<BookingOffer> _offers = List.from(MockData.offers);
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Offers & Promotions'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_circle, color: AppTheme.primaryColor),
-            onPressed: () => _showOfferDialog(context),
+            onPressed: () => _showOfferDialog(context, ref),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSummaryRow(),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _offers.length,
-              itemBuilder: (context, index) => _buildOfferCard(_offers[index]),
+      body: offersAsync.when(
+        data: (offers) => Column(
+          children: [
+            _buildSummaryRow(offers),
+            Expanded(
+              child: offers.isEmpty
+                  ? const Center(child: Text('No offers yet. Tap + to create one.'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: offers.length,
+                      itemBuilder: (context, index) => _buildOfferCard(context, ref, offers[index]),
+                    ),
             ),
-          ),
-        ],
+          ],
+        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildSummaryRow() {
-    final active = _offers.where((o) => o.isActive).length;
+  Widget _buildSummaryRow(List<BookingOffer> offers) {
+    final active = offers.where((o) => o.isActive).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Row(
         children: [
-          _buildStatChip('Total Offers', '${_offers.length}', Colors.blue),
+          _buildStatChip('Total Offers', '${offers.length}', Colors.blue),
           const SizedBox(width: 8),
           _buildStatChip('Active', '$active', Colors.green),
           const SizedBox(width: 8),
-          _buildStatChip('Inactive', '${_offers.length - active}', Colors.grey),
+          _buildStatChip('Inactive', '${offers.length - active}', Colors.grey),
         ],
       ),
     );
@@ -64,14 +67,12 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        '$label: $value',
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-      ),
+      child: Text('$label: $value', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
-  Widget _buildOfferCard(BookingOffer offer) {
+  Widget _buildOfferCard(BuildContext context, WidgetRef ref, BookingOffer offer) {
+    final fs = ref.read(firestoreServiceProvider);
     return Container(
       margin: const EdgeInsets.only(bottom: 12, top: 12),
       decoration: BoxDecoration(
@@ -85,17 +86,15 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             child: Stack(
               children: [
-                Image.network(
-                  offer.imageUrl,
-                  height: 120,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 120,
-                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    child: const Icon(Icons.local_offer, size: 48, color: AppTheme.primaryColor),
-                  ),
-                ),
+                offer.imageUrl.isNotEmpty
+                    ? Image.network(
+                        offer.imageUrl,
+                        height: 120,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _offerPlaceholder(),
+                      )
+                    : _offerPlaceholder(),
                 if (!offer.isActive)
                   Container(
                     height: 120,
@@ -106,18 +105,12 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                     ),
                   ),
                 Positioned(
-                  top: 8,
-                  right: 8,
+                  top: 8, right: 8,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      offer.discount,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryColor),
-                    ),
+                    decoration: BoxDecoration(color: AppTheme.accentColor, borderRadius: BorderRadius.circular(20)),
+                    child: Text(offer.discount,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryColor)),
                   ),
                 ),
               ],
@@ -131,16 +124,11 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: Text(
-                        offer.title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ),
+                    Expanded(child: Text(offer.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                     Switch(
                       value: offer.isActive,
                       activeThumbColor: AppTheme.primaryColor,
-                      onChanged: (val) => setState(() => offer.isActive = val),
+                      onChanged: (val) => fs.saveOffer(offer.copyWith(isActive: val)),
                     ),
                   ],
                 ),
@@ -157,10 +145,12 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                   children: [
                     _buildTag(offer.discountType, Colors.purple),
                     const SizedBox(width: 6),
-                    ...offer.applicableCabTypes.map((t) => Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: _buildTag(t, Colors.blue),
-                        )),
+                    ...offer.applicableCabTypes.map(
+                      (t) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _buildTag(t, Colors.blue),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -168,7 +158,7 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _showOfferDialog(context, offer: offer),
+                        onPressed: () => _showOfferDialog(context, ref, offer: offer),
                         icon: const Icon(Icons.edit, size: 16),
                         label: const Text('Edit'),
                         style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
@@ -177,7 +167,7 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _deleteOffer(offer),
+                        onPressed: () => _deleteOffer(context, ref, offer),
                         icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
                         label: const Text('Delete', style: TextStyle(color: Colors.red)),
                         style: OutlinedButton.styleFrom(
@@ -196,18 +186,23 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
     );
   }
 
+  Widget _offerPlaceholder() {
+    return Container(
+      height: 120,
+      color: AppTheme.primaryColor.withValues(alpha: 0.1),
+      child: const Icon(Icons.local_offer, size: 48, color: AppTheme.primaryColor),
+    );
+  }
+
   Widget _buildTag(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
       child: Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
 
-  void _showOfferDialog(BuildContext context, {BookingOffer? offer}) {
+  void _showOfferDialog(BuildContext context, WidgetRef ref, {BookingOffer? offer}) {
     final titleCtrl = TextEditingController(text: offer?.title ?? '');
     final discountCtrl = TextEditingController(text: offer?.discount ?? '');
     final validityCtrl = TextEditingController(text: offer?.validity ?? '');
@@ -218,15 +213,11 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
+            left: 20, right: 20, top: 20,
             bottom: MediaQuery.of(context).viewInsets.bottom + 20,
           ),
           child: SingleChildScrollView(
@@ -234,20 +225,12 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  offer == null ? 'Create New Offer' : 'Edit Offer',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                Text(offer == null ? 'Create New Offer' : 'Edit Offer',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Offer Title', prefixIcon: Icon(Icons.title)),
-                ),
+                TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Offer Title', prefixIcon: Icon(Icons.title))),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: discountCtrl,
-                  decoration: const InputDecoration(labelText: 'Discount Label (e.g. 20% OFF)', prefixIcon: Icon(Icons.discount)),
-                ),
+                TextField(controller: discountCtrl, decoration: const InputDecoration(labelText: 'Discount Label (e.g. 20% OFF)', prefixIcon: Icon(Icons.discount))),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -255,9 +238,7 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                       child: DropdownButtonFormField<String>(
                         value: discountType,
                         decoration: const InputDecoration(labelText: 'Discount Type'),
-                        items: ['Flat', 'Percentage']
-                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                            .toList(),
+                        items: ['Flat', 'Percentage'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                         onChanged: (v) => setModalState(() => discountType = v!),
                       ),
                     ),
@@ -272,10 +253,7 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: validityCtrl,
-                  decoration: const InputDecoration(labelText: 'Validity Period', prefixIcon: Icon(Icons.calendar_today)),
-                ),
+                TextField(controller: validityCtrl, decoration: const InputDecoration(labelText: 'Validity Period', prefixIcon: Icon(Icons.calendar_today))),
                 const SizedBox(height: 12),
                 const Text('Applicable Cab Types', style: TextStyle(fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
@@ -286,46 +264,41 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                     return FilterChip(
                       label: Text(type),
                       selected: isSelected,
-                      onSelected: (val) {
-                        setModalState(() {
-                          if (val) {
-                            selectedCabTypes.add(type);
-                          } else {
-                            selectedCabTypes.remove(type);
-                          }
-                        });
-                      },
+                      onSelected: (val) => setModalState(() {
+                        if (val) selectedCabTypes.add(type); else selectedCabTypes.remove(type);
+                      }),
                       selectedColor: AppTheme.primaryColor.withValues(alpha: 0.2),
                       checkmarkColor: AppTheme.primaryColor,
                     );
                   }).toList(),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (offer == null) {
-                      setState(() {
-                        _offers.add(BookingOffer(
-                          id: DateTime.now().millisecondsSinceEpoch.toString(),
-                          title: titleCtrl.text,
-                          discount: discountCtrl.text,
-                          validity: validityCtrl.text,
-                          imageUrl: 'https://images.unsplash.com/photo-1621944190310-e3cca1564bd7?auto=format&fit=crop&q=80&w=400',
-                          discountType: discountType,
-                          discountValue: double.tryParse(discountValueCtrl.text) ?? 0,
-                          applicableCabTypes: selectedCabTypes,
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final newOffer = BookingOffer(
+                        id: offer?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                        title: titleCtrl.text,
+                        discount: discountCtrl.text,
+                        validity: validityCtrl.text,
+                        imageUrl: offer?.imageUrl ?? '',
+                        discountType: discountType,
+                        discountValue: double.tryParse(discountValueCtrl.text) ?? 0,
+                        applicableCabTypes: selectedCabTypes,
+                        isActive: offer?.isActive ?? true,
+                      );
+                      await ref.read(firestoreServiceProvider).saveOffer(newOffer);
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(offer == null ? 'Offer created!' : 'Offer updated!'),
+                          backgroundColor: Colors.green,
                         ));
-                      });
-                    }
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(offer == null ? 'Offer created!' : 'Offer updated!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  },
-                  child: Text(offer == null ? 'Create Offer' : 'Update Offer'),
+                      }
+                    },
+                    child: Text(offer == null ? 'Create Offer' : 'Update Offer'),
+                  ),
                 ),
               ],
             ),
@@ -335,7 +308,7 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
     );
   }
 
-  void _deleteOffer(BookingOffer offer) {
+  void _deleteOffer(BuildContext context, WidgetRef ref, BookingOffer offer) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -344,9 +317,9 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
-              setState(() => _offers.remove(offer));
-              Navigator.pop(context);
+            onPressed: () async {
+              await ref.read(firestoreServiceProvider).deleteOffer(offer.id);
+              if (context.mounted) Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),

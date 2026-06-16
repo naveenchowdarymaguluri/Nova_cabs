@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/app_providers.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/firestore_service.dart';
+import '../../../core/location_service.dart';
 import '../summary/trip_summary_screen.dart';
 import '../../../widgets/map_view.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+const _kMapsApiKey = 'AIzaSyDdKt_rjoSjVz4k9TXa9nakXo8qTgpy_3I';
 
 class TripTrackingScreen extends ConsumerStatefulWidget {
   final TripRequest trip;
@@ -25,13 +31,42 @@ class TripTrackingScreen extends ConsumerStatefulWidget {
 
 class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   BookingStatus _currentStatus = BookingStatus.driverAccepted;
-  int _secondsLeft = 180; // 3 minutes until arrival
+  int _secondsLeft = 180;
   Timer? _timer;
+  LatLng? _pickupLatLng;
+  LatLng? _dropLatLng;
 
   @override
   void initState() {
     super.initState();
     _startSimulation();
+    _geocodeLocations();
+  }
+
+  Future<void> _geocodeLocations() async {
+    _pickupLatLng = await _geocode(widget.trip.pickupLocation);
+    _dropLatLng = await _geocode(widget.trip.dropLocation);
+    if (mounted) setState(() {});
+  }
+
+  Future<LatLng?> _geocode(String address) async {
+    try {
+      final uri = Uri.https(
+        'maps.googleapis.com',
+        '/maps/api/geocode/json',
+        {'address': address, 'key': _kMapsApiKey},
+      );
+      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>?;
+        if (results != null && results.isNotEmpty) {
+          final loc = results[0]['geometry']['location'] as Map<String, dynamic>;
+          return LatLng((loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   void _startSimulation() {
@@ -94,9 +129,12 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   }
 
   Widget _buildMapPlaceholder() {
-    return const MapView(
-      initialLat: 17.3850,
-      initialLng: 78.4867,
+    return MapView(
+      initialLat: _pickupLatLng?.latitude ?? 17.3850,
+      initialLng: _pickupLatLng?.longitude ?? 78.4867,
+      pickupLocation: _pickupLatLng,
+      dropoffLocation: _dropLatLng,
+      showRoute: _pickupLatLng != null && _dropLatLng != null,
     );
   }
 
@@ -149,7 +187,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
           children: [
             _buildStatusHeader(),
             const Divider(height: 24),
-            _buildOtpDisplay(), // Added OTP display
+            _buildOtpDisplay(),
+            const Divider(height: 24),
+            _buildDistanceAndFare(),
             const Divider(height: 24),
             _buildDriverInfo(),
             const SizedBox(height: 24),
@@ -170,7 +210,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.local_taxi, color: AppTheme.primaryColor),
         ),
         const SizedBox(width: 16),
@@ -200,9 +240,77 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
             border: Border.all(color: Colors.blue.shade200),
           ),
           child: const Text(
-            '1234', // Mock OTP
+            '1234',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 4, color: AppTheme.primaryColor),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDistanceAndFare() {
+    final trip = widget.trip;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Trip Details', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Distance',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  LocationService.formatDistance(trip.estimatedDistance),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Container(
+              width: 1,
+              height: 40,
+              color: Colors.grey.shade300,
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Estimated Fare',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '₹${trip.estimatedFare.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+              ],
+            ),
+            Container(
+              width: 1,
+              height: 40,
+              color: Colors.grey.shade300,
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'ETA',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  LocationService.formatDuration(_secondsLeft),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ],
         ),
       ],
     );
@@ -246,7 +354,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: _callDriver,
             icon: const Icon(Icons.call),
             label: const Text('Call Driver'),
             style: OutlinedButton.styleFrom(
@@ -260,7 +368,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         if (_currentStatus != BookingStatus.tripStarted)
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: _cancelRequest,
               icon: const Icon(Icons.close, color: Colors.red),
               label: const Text('Cancel Request', style: TextStyle(color: Colors.red)),
               style: OutlinedButton.styleFrom(
@@ -273,7 +381,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         else
           Expanded(
             child: ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: _shareStatus,
               icon: const Icon(Icons.share, color: Colors.white),
               label: const Text('Share Status', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
@@ -284,6 +392,66 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Future<void> _callDriver() async {
+    final phone = widget.driver.mobileNumber.replaceAll(RegExp(r'\s+'), '');
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot call ${widget.driver.mobileNumber}')),
+      );
+    }
+  }
+
+  Future<void> _cancelRequest() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Ride?'),
+        content: const Text('Are you sure you want to cancel this ride request?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    _timer?.cancel();
+    final cancelled = widget.trip.copyWith(status: BookingStatus.cancelled);
+    await ref.read(firestoreServiceProvider).updateTrip(cancelled);
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ride cancelled successfully')),
+    );
+  }
+
+  void _shareStatus() {
+    final trip = widget.trip;
+    final driver = widget.driver;
+    final eta = '${(_secondsLeft ~/ 60)}m ${(_secondsLeft % 60)}s';
+    final text = '''🚖 Nova Cabs — Trip Status
+From: ${trip.pickupLocation}
+To: ${trip.dropLocation}
+Driver: ${driver.fullName}
+Vehicle: ${driver.vehicleModel} (${driver.vehicleNumber})
+ETA: $eta
+Fare: ₹${trip.estimatedFare.toStringAsFixed(0)}''';
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Trip status copied to clipboard')),
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
+import '../../../core/firestore_service.dart';
 import '../../shared/otp_screen.dart';
 import '../home/home_screen.dart';
 import '../../driver/dashboard/driver_dashboard.dart';
@@ -98,6 +100,7 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
                       maxLength: 10,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
                         labelText: 'Mobile Number',
                         hintText: '9876543210',
@@ -217,24 +220,34 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
       return;
     }
     setState(() => _isLoading = true);
-    await ref.read(otpProvider.notifier).sendOtp('+91 $phone');
+    final sent = await ref.read(otpProvider.notifier).sendOtp('+91$phone');
     if (!mounted) return;
     setState(() => _isLoading = false);
+
+    if (!sent) {
+      final error = ref.read(otpProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Failed to send OTP. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OtpScreen(
-          phone: '+91 $phone',
+          phone: '+91$phone',
           role: 'Customer',
-          onVerified: () => _onVerified('+91 $phone'),
+          onVerified: () => _onVerified('+91$phone'),
         ),
       ),
     );
   }
 
   Future<void> _onVerified(String phone) async {
-    setState(() => _isLoading = true);
     final firestore = ref.read(firestoreServiceProvider);
 
     // Check if phone belongs to a Driver
@@ -271,21 +284,27 @@ class _CustomerLoginScreenState extends ConsumerState<CustomerLoginScreen> {
       return;
     }
 
-    // Existing Customer check
+    // Existing customer check
     final customer = await firestore.getCustomerByPhone(phone);
     if (customer != null) {
-      // Login existing customer
+      // Found → login with their stored name and preserve original document ID
       await ref.read(authProvider.notifier).loginAsCustomer(
-            name: customer.name,
-            phone: phone,
-          );
+        name: customer.name,
+        phone: phone,
+        existingId: customer.id,
+      );
     } else {
-      // New customer (using name from input if available)
-      final name = _nameController.text.trim().isEmpty ? 'Guest User' : _nameController.text.trim();
-      await ref.read(authProvider.notifier).loginAsCustomer(name: name, phone: phone);
+      // New customer — auto-create Firestore profile
+      final name = _nameController.text.trim().isEmpty
+          ? 'Guest User'
+          : _nameController.text.trim();
+      await ref.read(authProvider.notifier).loginAsCustomer(
+        name: name,
+        phone: phone,
+        // no existingId → new document created automatically
+      );
     }
 
-    setState(() => _isLoading = false);
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,

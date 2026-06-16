@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +10,9 @@ import '../../../core/app_providers.dart';
 class OtpScreen extends ConsumerStatefulWidget {
   final String phone;
   final String role; // 'Customer', 'Driver', 'Agency'
-  final VoidCallback onVerified;
+  /// Async so the OTP screen can show a spinner while post-verification
+  /// work (Firestore lookups, auth state update, navigation) completes.
+  final Future<void> Function() onVerified;
 
   const OtpScreen({
     super.key,
@@ -23,8 +27,10 @@ class OtpScreen extends ConsumerStatefulWidget {
 
 class _OtpScreenState extends ConsumerState<OtpScreen>
     with TickerProviderStateMixin {
-  final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
   late AnimationController _shakeController;
@@ -32,6 +38,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
 
   int _resendSeconds = 30;
   bool _canResend = false;
+  // True while onVerified callback is running (Firestore calls / navigation).
+  bool _isProcessing = false;
+
+  Timer? _resendTimer;
 
   @override
   void initState() {
@@ -44,26 +54,42 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
     _startResendTimer();
+
+    // Handle the case where verificationCompleted already fired before this
+    // screen opened (instant-verify / emulator). State is already isVerified=true
+    // but ref.listen won't fire for the initial value — check here instead.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(otpProvider).isVerified) _runOnVerified();
+    });
   }
 
   void _startResendTimer() {
+    _resendTimer?.cancel();
     setState(() {
       _resendSeconds = 30;
       _canResend = false;
     });
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
+
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
       setState(() {
         _resendSeconds--;
-        if (_resendSeconds <= 0) _canResend = true;
+        if (_resendSeconds <= 0) {
+          _canResend = true;
+          timer.cancel();
+        }
       });
-      return _resendSeconds > 0;
     });
   }
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     for (final c in _controllers) {
       c.dispose();
     }
@@ -74,25 +100,55 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
     super.dispose();
   }
 
-  String get _enteredOtp =>
-      _controllers.map((c) => c.text).join();
+  String get _enteredOtp => _controllers.map((c) => c.text).join();
+
+  /// Runs onVerified() exactly once — guarded by _isProcessing.
+  Future<void> _runOnVerified() async {
+    if (_isProcessing || !mounted) return;
+    setState(() => _isProcessing = true);
+    try {
+      await widget.onVerified();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Something went wrong: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
 
   Future<void> _verify() async {
     if (_enteredOtp.length < 6) {
       _shakeController.forward(from: 0);
       return;
     }
+
     final notifier = ref.read(otpProvider.notifier);
     final success = await notifier.verifyOtp(_enteredOtp);
-    if (success && mounted) {
-      widget.onVerified();
-    } else if (mounted) {
+    if (!mounted) return;
+
+    if (!success) {
       _shakeController.forward(from: 0);
+      return;
     }
+
+    // OTP confirmed — run post-verification work (Firestore + navigation).
+    await _runOnVerified();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Fires when verificationCompleted triggers AFTER this screen is already open
+    // (e.g. Android auto-reads the SMS while the user is on this screen).
+    ref.listen<OtpState>(otpProvider, (prev, next) {
+      if (next.isVerified && !(prev?.isVerified ?? false)) {
+        _runOnVerified();
+      }
+    });
+
     final otpState = ref.watch(otpProvider);
 
     return Scaffold(
@@ -126,18 +182,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
             const SizedBox(height: 24),
             const Text(
               'OTP Verification',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'We sent a 6-digit OTP to',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 15,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
@@ -157,7 +207,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
               builder: (context, child) {
                 return Transform.translate(
                   offset: Offset(
-                    _shakeAnimation.value * (_shakeController.status == AnimationStatus.forward ? 1 : -1),
+                    _shakeAnimation.value *
+                        (_shakeController.status == AnimationStatus.forward
+                            ? 1
+                            : -1),
                     0,
                   ),
                   child: child,
@@ -197,14 +250,24 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
+                        color: Colors.black,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         counterText: '',
                         border: InputBorder.none,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                        fillColor: Colors.white,
+                        filled: true,
+                        contentPadding: EdgeInsets.zero,
                       ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       onChanged: (val) {
                         setState(() {});
                         if (val.isNotEmpty && index < 5) {
@@ -235,14 +298,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
-                onPressed: otpState.isVerifying ? null : _verify,
+                onPressed: (otpState.isVerifying || _isProcessing) ? null : _verify,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: otpState.isVerifying
+                child: (otpState.isVerifying || _isProcessing)
                     ? const SizedBox(
                         width: 24,
                         height: 24,
@@ -251,9 +314,9 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                           strokeWidth: 2.5,
                         ),
                       )
-                    : const Text(
-                        'Verify OTP',
-                        style: TextStyle(
+                    : Text(
+                        _isProcessing ? 'Please wait…' : 'Verify OTP',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -271,9 +334,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                 ),
                 _canResend
                     ? TextButton(
-                        onPressed: () {
+                        onPressed: () async {
+                          await ref
+                              .read(otpProvider.notifier)
+                              .sendOtp(widget.phone);
+                          if (!mounted) return;
                           _startResendTimer();
-                          // Clear OTP fields
                           for (final c in _controllers) {
                             c.clear();
                           }
@@ -298,11 +364,9 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              '💡 For demo, use any 6-digit OTP',
-              style: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 12,
-              ),
+              'OTP is sent using Firebase phone authentication. Do not share this code.',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

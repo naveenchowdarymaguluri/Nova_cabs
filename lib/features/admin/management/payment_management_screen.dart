@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/mock_data.dart';
-import '../../../core/models.dart';
+import '../../../core/app_providers.dart';
+import '../../../core/extended_models.dart';
 
-class PaymentManagementScreen extends StatefulWidget {
+class PaymentManagementScreen extends ConsumerStatefulWidget {
   const PaymentManagementScreen({super.key});
 
   @override
-  State<PaymentManagementScreen> createState() => _PaymentManagementScreenState();
+  ConsumerState<PaymentManagementScreen> createState() => _PaymentManagementScreenState();
 }
 
-class _PaymentManagementScreenState extends State<PaymentManagementScreen>
+class _PaymentManagementScreenState extends ConsumerState<PaymentManagementScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -26,16 +27,10 @@ class _PaymentManagementScreenState extends State<PaymentManagementScreen>
     super.dispose();
   }
 
-  double get _totalRevenue => MockData.bookings
-      .where((b) => b.paymentStatus == 'Success')
-      .fold(0, (sum, b) => sum + b.totalFare);
-
-  double get _pendingAmount => MockData.bookings
-      .where((b) => b.paymentStatus == 'Pending')
-      .fold(0, (sum, b) => sum + b.totalFare);
-
   @override
   Widget build(BuildContext context) {
+    final bookingsAsync = ref.watch(firestoreAllBookingsProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Payment Management'),
@@ -48,26 +43,39 @@ class _PaymentManagementScreenState extends State<PaymentManagementScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildRevenueSummary(),
-          _buildTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTransactionList('All'),
-                _buildTransactionList('Success'),
-                _buildTransactionList('Pending'),
-              ],
-            ),
-          ),
-        ],
+      body: bookingsAsync.when(
+        data: (bookings) {
+          final revenue = bookings
+              .where((b) => b.paymentStatus == PaymentStatus.success)
+              .fold(0.0, (sum, b) => sum + (b.finalFare ?? b.estimatedFare));
+          final pending = bookings
+              .where((b) => b.paymentStatus == PaymentStatus.pending)
+              .fold(0.0, (sum, b) => sum + (b.finalFare ?? b.estimatedFare));
+
+          return Column(
+            children: [
+              _buildRevenueSummary(revenue, pending, bookings.length),
+              _buildTabBar(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildList(bookings, 'All'),
+                    _buildList(bookings, 'Success'),
+                    _buildList(bookings, 'Pending'),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildRevenueSummary() {
+  Widget _buildRevenueSummary(double revenue, double pending, int count) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -83,24 +91,16 @@ class _PaymentManagementScreenState extends State<PaymentManagementScreen>
         children: [
           const Text('Total Revenue', style: TextStyle(color: Colors.white70, fontSize: 14)),
           const SizedBox(height: 8),
-          Text(
-            '₹${_totalRevenue.toStringAsFixed(0)}',
-            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-          ),
+          Text('₹${revenue.toStringAsFixed(0)}',
+              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                child: _buildMiniStat('Transactions', '${MockData.bookings.length}', Colors.white),
-              ),
+              Expanded(child: _buildMiniStat('Transactions', '$count', Colors.white)),
               Container(width: 1, height: 40, color: Colors.white24),
-              Expanded(
-                child: _buildMiniStat('Pending', '₹${_pendingAmount.toStringAsFixed(0)}', Colors.amber),
-              ),
+              Expanded(child: _buildMiniStat('Pending', '₹${pending.toStringAsFixed(0)}', Colors.amber)),
               Container(width: 1, height: 40, color: Colors.white24),
-              Expanded(
-                child: _buildMiniStat('Refunded', '₹21,000', Colors.redAccent),
-              ),
+              Expanded(child: _buildMiniStat('Refunded', '₹0', Colors.redAccent)),
             ],
           ),
         ],
@@ -121,50 +121,39 @@ class _PaymentManagementScreenState extends State<PaymentManagementScreen>
   Widget _buildTabBar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
       child: TabBar(
         controller: _tabController,
         labelColor: Colors.white,
         unselectedLabelColor: Colors.grey,
-        indicator: BoxDecoration(
-          color: AppTheme.primaryColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        tabs: const [
-          Tab(text: 'All'),
-          Tab(text: 'Success'),
-          Tab(text: 'Pending'),
-        ],
+        indicator: BoxDecoration(color: AppTheme.primaryColor, borderRadius: BorderRadius.circular(12)),
+        tabs: const [Tab(text: 'All'), Tab(text: 'Success'), Tab(text: 'Pending')],
       ),
     );
   }
 
-  Widget _buildTransactionList(String filter) {
-    final transactions = MockData.bookings.where((b) {
+  Widget _buildList(List<TripRequest> all, String filter) {
+    final items = all.where((b) {
       if (filter == 'All') return true;
-      return b.paymentStatus == filter;
+      if (filter == 'Success') return b.paymentStatus == PaymentStatus.success;
+      return b.paymentStatus == PaymentStatus.pending;
     }).toList();
+
+    if (items.isEmpty) {
+      return Center(child: Text('No $filter transactions'));
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: transactions.length,
-      itemBuilder: (context, index) => _buildTransactionCard(transactions[index]),
+      itemCount: items.length,
+      itemBuilder: (context, index) => _buildTransactionCard(items[index]),
     );
   }
 
-  Widget _buildTransactionCard(Booking booking) {
-    final isSuccess = booking.paymentStatus == 'Success';
-    final isPending = booking.paymentStatus == 'Pending';
-    final isRefunded = booking.paymentStatus == 'Refunded';
-
-    Color statusColor = isSuccess
-        ? Colors.green
-        : isPending
-            ? Colors.orange
-            : Colors.red;
+  Widget _buildTransactionCard(TripRequest booking) {
+    final isSuccess = booking.paymentStatus == PaymentStatus.success;
+    final color = isSuccess ? Colors.green : Colors.orange;
+    final fare = booking.finalFare ?? booking.estimatedFare;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -178,57 +167,32 @@ class _PaymentManagementScreenState extends State<PaymentManagementScreen>
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isSuccess ? Icons.check_circle : isPending ? Icons.pending : Icons.replay,
-              color: statusColor,
-              size: 20,
-            ),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(isSuccess ? Icons.check_circle : Icons.pending, color: color, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  booking.customerName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                Text(
-                  '#${booking.id} • ${booking.paymentMethod}',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
-                Text(
-                  booking.date,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-                ),
+                Text(booking.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text('#${booking.bookingId} • ${booking.paymentMethod.name.toUpperCase()}',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                Text('${booking.tripDate.day}/${booking.tripDate.month}/${booking.tripDate.year}',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
               ],
             ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '₹${booking.totalFare.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: isRefunded ? Colors.red : Colors.black87,
-                ),
-              ),
+              Text('₹${fare.toStringAsFixed(0)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  booking.paymentStatus,
-                  style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
-                ),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                child: Text(booking.paymentStatus.name.toUpperCase(),
+                    style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

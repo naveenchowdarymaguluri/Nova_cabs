@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/extended_mock_data.dart';
 import '../../../core/extended_models.dart';
+import '../../../core/firestore_service.dart';
 import '../../shared/otp_screen.dart';
 import '../dashboard/driver_dashboard.dart';
 import '../registration/driver_registration_screen.dart';
@@ -26,7 +26,7 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen> {
     super.dispose();
   }
 
-  void _sendOtp() async {
+  Future<void> _sendOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -36,49 +36,55 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    await ref.read(otpProvider.notifier).sendOtp('+91 $phone');
+    final sent = await ref.read(otpProvider.notifier).sendOtp('+91$phone');
     if (!mounted) return;
     setState(() => _isLoading = false);
+
+    if (!sent) {
+      final error = ref.read(otpProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Failed to send OTP. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OtpScreen(
-          phone: '+91 $phone',
+          phone: '+91$phone',
           role: 'Driver',
-          onVerified: () => _onOtpVerified('+91 $phone'),
+          onVerified: () => _onOtpVerified('+91$phone'),
         ),
       ),
     );
   }
 
-  void _onOtpVerified(String phone) {
-    // Standardize phone for comparison
-    final normalizedPhone = phone.replaceAll(RegExp(r'\s+'), '');
-    
-    // Check if driver exists in the system
-    final drivers = ref.read(driverListProvider);
-    final existing = drivers.where((d) {
-      final dp = d.mobileNumber.replaceAll(RegExp(r'\s+'), '');
-      return dp == normalizedPhone;
-    }).firstOrNull;
+  Future<void> _onOtpVerified(String phone) async {
+    // Fresh Firestore query — avoids stale in-memory cache and handles all
+    // phone formats correctly via normalizePhone() inside getDriverByPhone().
+    final firestore = ref.read(firestoreServiceProvider);
+    final existing = await firestore.getDriverByPhone(phone);
+
+    if (!mounted) return;
 
     if (existing != null) {
-      // Login existing driver
       ref.read(authProvider.notifier).loginAsDriver(
         name: existing.fullName,
         phone: phone,
         id: existing.id,
       );
 
-      if (existing.status == AccountStatus.approved || existing.status == AccountStatus.active) {
-        Navigator.pop(context); // Close OTP screen
-        Navigator.pushReplacement(
+      if (existing.status == AccountStatus.approved ||
+          existing.status == AccountStatus.active) {
+        Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => DriverDashboard(driver: existing)),
+          MaterialPageRoute(builder: (_) => DriverDashboard(driver: existing)),
+          (route) => false,
         );
-      } else if (existing.status == AccountStatus.pendingVerification) {
-        _showPendingDialog();
       } else if (existing.status == AccountStatus.rejected) {
         _showRejectedDialog(existing.adminRemarks ?? '');
       } else {
@@ -86,12 +92,12 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen> {
       }
     } else {
       // New driver — go to registration
-      Navigator.pop(context); // Close OTP screen
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => DriverRegistrationScreen(phone: phone),
+          builder: (_) => DriverRegistrationScreen(phone: phone),
         ),
+        (route) => false,
       );
     }
   }

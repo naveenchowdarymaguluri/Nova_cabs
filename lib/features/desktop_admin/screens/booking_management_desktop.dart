@@ -247,8 +247,8 @@ class _BookingRowState extends State<_BookingRow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(b.tripDate != null ? '${b.tripDate!.day}/${b.tripDate!.month}/${b.tripDate!.year}' : '-', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Text(b.tripTime ?? '-', style: const TextStyle(fontSize: 11, color: DesktopTheme.textMuted)),
+                  Text('${b.tripDate.day}/${b.tripDate.month}/${b.tripDate.year}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                  Text(b.tripTime, style: const TextStyle(fontSize: 11, color: DesktopTheme.textMuted)),
                 ],
               ),
             ),
@@ -311,7 +311,7 @@ class _BookingRowState extends State<_BookingRow> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Booking #${b.id}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                          Text('${b.tripDate != null ? "${b.tripDate!.day}/${b.tripDate!.month}" : "-"} at ${b.tripTime ?? "-"}', style: const TextStyle(color: DesktopTheme.textMuted, fontSize: 13)),
+                          Text('${b.tripDate.day}/${b.tripDate.month} at ${b.tripTime}', style: const TextStyle(color: DesktopTheme.textMuted, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -380,7 +380,7 @@ class _ActionBtn extends StatelessWidget {
         child: Container(
           width: 28,
           height: 28,
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
           child: Icon(icon, size: 14, color: color),
         ),
       ),

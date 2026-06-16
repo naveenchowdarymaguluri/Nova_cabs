@@ -31,8 +31,8 @@ class _DriverPricingScreenState extends ConsumerState<DriverPricingScreen> {
   void initState() {
     super.initState();
     final pricing = widget.driver.pricing;
-    _baseFare = pricing?.baseFare ?? 100.0;
-    _pricePerKm = pricing?.pricePerKm ?? 12.0;
+    _baseFare = pricing?.baseFare ?? DriverPricing.kMinBaseFare;
+    _pricePerKm = pricing?.pricePerKm ?? DriverPricing.kMinPricePerKm;
     _pricePerHour = pricing?.pricePerHour ?? 200.0;
     _waitingCharges = pricing?.waitingCharges ?? 2.0;
     _nightCharges = pricing?.nightCharges ?? 150.0;

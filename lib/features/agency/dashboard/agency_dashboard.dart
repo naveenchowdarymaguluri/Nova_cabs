@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/extended_mock_data.dart';
-import '../../../core/mock_data.dart';
 import '../../role_selection/role_selection_screen.dart';
 import 'agency_driver_details_screen.dart';
 
@@ -451,7 +449,7 @@ class _AgencyDashboardState extends ConsumerState<AgencyDashboard> {
               final totalRevenue = agencyBookings.fold(0.0, (s, b) => s + (b.finalFare ?? b.estimatedFare));
               final completed = agencyBookings.where((b) => b.status == BookingStatus.tripCompleted).length;
               final billed = agencyBookings.where((b) => b.status == BookingStatus.paymentCompleted).length; // Map to appropriate statuses
-              final ongoing = agencyBookings.where((b) => b.status == BookingStatus.driverAccepted || b.status == BookingStatus.arrived).length;
+              final ongoing = agencyBookings.where((b) => b.status == BookingStatus.driverAccepted || b.status == BookingStatus.driverArriving).length;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),

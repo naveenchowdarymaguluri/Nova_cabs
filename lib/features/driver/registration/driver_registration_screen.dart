@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/extended_models.dart';
 import '../../../core/app_providers.dart';
-import '../../../core/extended_mock_data.dart';
 import '../pricing/driver_pricing_screen.dart';
 
 /// Driver Registration Screen — complete multi-step form
@@ -39,6 +38,7 @@ class _DriverRegistrationScreenState
   // Step 3: Driver Type
   DriverType _driverType = DriverType.individual;
   String _selectedAgencyId = '';
+  String _selectedAgencyName = '';
 
   bool _isSubmitting = false;
 
@@ -229,7 +229,13 @@ class _DriverRegistrationScreenState
           label: 'Full Name',
           hint: 'As on Aadhaar card',
           icon: Icons.person_outline,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.words,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z ]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Full name is required';
+            if (v.trim().length < 3) return 'Name must be at least 3 characters';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         Container(
@@ -271,19 +277,31 @@ class _DriverRegistrationScreenState
         const SizedBox(height: 16),
         _buildTextField(
           controller: _aadhaarController,
-          label: 'Aadhaar / ID Number',
-          hint: 'XXXX-XXXX-XXXX',
+          label: 'Aadhaar Number',
+          hint: '12-digit Aadhaar number',
           icon: Icons.badge_outlined,
           keyboardType: TextInputType.number,
-          validator: (v) => (v == null || v.length < 12) ? 'Enter valid Aadhaar' : null,
+          maxLength: 12,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          validator: (v) {
+            if (v == null || v.isEmpty) return 'Aadhaar number is required';
+            if (v.length != 12) return 'Aadhaar must be exactly 12 digits';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         _buildTextField(
           controller: _licenseController,
           label: 'Driving License Number',
-          hint: 'e.g. KA01 20230012345',
+          hint: 'e.g. KA0120230012345',
           icon: Icons.credit_card_outlined,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'License number is required';
+            if (v.trim().length < 8) return 'Enter valid license number (min 8 chars)';
+            return null;
+          },
         ),
         const SizedBox(height: 20),
         Container(
@@ -320,7 +338,14 @@ class _DriverRegistrationScreenState
           label: 'Vehicle Number',
           hint: 'e.g. KA01AB1234',
           icon: Icons.confirmation_number_outlined,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Vehicle number is required';
+            final clean = v.replaceAll('-', '');
+            if (clean.length < 8 || clean.length > 10) return 'Enter valid vehicle number (e.g. KA01AB1234)';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         _buildTextField(
@@ -328,7 +353,12 @@ class _DriverRegistrationScreenState
           label: 'Vehicle Model',
           hint: 'e.g. Maruti Swift Dzire',
           icon: Icons.car_repair,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.words,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Vehicle model is required';
+            if (v.trim().length < 3) return 'Enter valid model name';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         // Vehicle Type
@@ -406,7 +436,13 @@ class _DriverRegistrationScreenState
           label: 'Vehicle RC Number',
           hint: 'Registration Certificate Number',
           icon: Icons.article_outlined,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'RC number is required';
+            if (v.trim().length < 5) return 'Enter valid RC number';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         _buildTextField(
@@ -414,7 +450,13 @@ class _DriverRegistrationScreenState
           label: 'Insurance Number',
           hint: 'Vehicle insurance policy number',
           icon: Icons.security_outlined,
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9/\-]'))],
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Insurance number is required';
+            if (v.trim().length < 5) return 'Enter valid insurance number';
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         // Vehicle images upload placeholder
@@ -459,9 +501,7 @@ class _DriverRegistrationScreenState
   }
 
   Widget _buildDriverTypeStep() {
-    final agencies = MockAgencyData.agencies
-        .where((a) => a.status == AccountStatus.approved)
-        .toList();
+    final agencies = ref.watch(approvedAgenciesProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -582,7 +622,7 @@ class _DriverRegistrationScreenState
           const Text('Select Your Agency', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: _selectedAgencyId.isEmpty ? null : _selectedAgencyId,
+            initialValue: _selectedAgencyId.isEmpty ? null : _selectedAgencyId,
             hint: const Text('Choose agency'),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.business_outlined),
@@ -596,7 +636,12 @@ class _DriverRegistrationScreenState
                 child: Text(agency.agencyName),
               );
             }).toList(),
-            onChanged: (val) => setState(() => _selectedAgencyId = val ?? ''),
+            onChanged: (val) {
+              setState(() {
+                _selectedAgencyId = val ?? '';
+                _selectedAgencyName = agencies.firstWhere((a) => a.id == val, orElse: () => agencies.first).agencyName;
+              });
+            },
             validator: (v) {
               if (_driverType == DriverType.agency && (v == null || v.isEmpty)) {
                 return 'Please select your agency';
@@ -634,9 +679,7 @@ class _DriverRegistrationScreenState
           _buildReviewItem('Type',
             _driverType == DriverType.individual ? 'Individual Driver' : 'Agency Driver'),
           if (_driverType == DriverType.agency && _selectedAgencyId.isNotEmpty)
-            _buildReviewItem('Agency', MockAgencyData.agencies
-                .firstWhere((a) => a.id == _selectedAgencyId, orElse: () => MockAgencyData.agencies.first)
-                .agencyName),
+            _buildReviewItem('Agency', _selectedAgencyName),
         ], Icons.badge_outlined, Colors.orange),
         const SizedBox(height: 24),
         Container(
@@ -717,17 +760,24 @@ class _DriverRegistrationScreenState
     required String hint,
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
+    TextCapitalization textCapitalization = TextCapitalization.none,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      maxLength: maxLength,
+      textCapitalization: textCapitalization,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon),
         filled: true,
         fillColor: Colors.white,
+        counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -735,6 +785,7 @@ class _DriverRegistrationScreenState
         ),
       ),
       validator: validator,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
     );
   }
 
@@ -828,11 +879,7 @@ class _DriverRegistrationScreenState
       vehicleModel: _vehicleModelController.text.trim(),
       driverType: _driverType,
       agencyId: _driverType == DriverType.agency ? _selectedAgencyId : null,
-      agencyName: _driverType == DriverType.agency
-          ? MockAgencyData.agencies
-              .firstWhere((a) => a.id == _selectedAgencyId, orElse: () => MockAgencyData.agencies.first)
-              .agencyName
-          : null,
+      agencyName: _driverType == DriverType.agency ? _selectedAgencyName : null,
       status: AccountStatus.pendingVerification,
       registeredAt: DateTime.now(),
     );
