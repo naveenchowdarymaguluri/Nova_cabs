@@ -11,7 +11,12 @@ import '../driver/dashboard/driver_dashboard.dart';
 import '../agency/dashboard/agency_dashboard.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  /// If provided, overrides the default multi-role navigation after the
+  /// animation completes. Used by the customer and driver/agency entry points
+  /// so each app only routes to its own screens.
+  final Future<void> Function(BuildContext context)? onNavigateReady;
+
+  const SplashScreen({super.key, this.onNavigateReady});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -88,6 +93,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _navigate() async {
     if (!mounted) return;
+
+    // Delegate to app-specific navigation when provided.
+    if (widget.onNavigateReady != null) {
+      await widget.onNavigateReady!(context);
+      return;
+    }
 
     final isMobile = defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;

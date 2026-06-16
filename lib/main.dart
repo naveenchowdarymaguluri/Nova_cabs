@@ -1,3 +1,11 @@
+// ============================================================
+// NOVA CABS — Combined development entry point (all roles)
+//
+// For production builds use the dedicated entry points below:
+//   Customer mobile  → flutter run -t lib/main_customer.dart
+//   Driver & Agency  → flutter run -t lib/main_driver_agency.dart
+//   Admin desktop    → flutter run -t lib/main_admin.dart -d windows
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,7 +13,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/app_theme.dart';
-import 'core/app_config.dart'; // ← secure config, no .env asset needed
+import 'core/app_config.dart';
 import 'core/app_router.dart';
 import 'core/app_logger.dart';
 import 'firebase_options.dart';
